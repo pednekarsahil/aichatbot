@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Intelligence Designed To Evolve</title>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  />
+
+  <!-- OnlineWebFonts CDN: BubbledotICG-FinePos -->
+  <link
+    href="https://db.onlinewebfonts.com/c/8cb707a9b8a73f8a7403336b861c3074?family=BubbledotICG-FinePos"
+    rel="stylesheet"
+  />
+
+  <!-- Font Awesome 6.5.2 -->
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+    integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A=="
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer"
+  />
+
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="preload" as="image" href="assets/profile.png" />
+</head>
+<body>
+  <!-- Full-viewport cover media behind all UI -->
+  <div class="bg" id="bg-container" aria-hidden="true">
+    <video class="bg-video" id="bg-video" autoplay muted loop playsinline>
+      <source
+        id="bg-video-source"
+        src="./assets/loopvideo.mp4"
+        type="video/mp4"
+      />
+    </video>
+    <div class="bg-image" id="bg-image" style="display: none;"></div>
+  </div>
+
+  <!-- Slide Drawer & 3D Glass Slide Button -->
+  <div class="slide-drawer-overlay" id="drawer-overlay" hidden></div>
+  <aside class="slide-drawer" id="slide-drawer" aria-label="History and Settings Drawer">
+    <!-- 3D Realistic Circular Slide Button (Top-Left) -->
+    <button
+      id="sidebar-slide-btn"
+      class="slide-handle-btn"
+      type="button"
+      aria-label="Toggle history and background drawer"
+      aria-expanded="false"
+    >
+      <div class="handle-chevron-wrap">
+        <i class="fa-solid fa-chevron-right handle-chevron" id="handle-chevron"></i>
+      </div>
+    </button>
+
+    <div class="drawer-content">
+      <div class="drawer-header">
+        <div class="drawer-header-title">
+          
+        
+        </div>
+       
+      </div>
+
+      <!-- Navigation Tabs -->
+      <div class="drawer-tabs">
+        <button type="button" class="drawer-tab active" data-tab="history">
+          <i class="fa-solid fa-clock-rotate-left"></i>
+          <span>Chat History</span>
+        </button>
+        <button type="button" class="drawer-tab" data-tab="background">
+          <i class="fa-solid fa-photo-film"></i>
+          <span>Background</span>
+        </button>
+      </div>
+
+      <!-- Tab: History -->
+      <div class="drawer-panel active" id="panel-history">
+        <div class="panel-actions">
+          <button type="button" class="glass-action-btn" id="new-chat-btn">
+            <i class="fa-solid fa-plus"></i>
+            <span>New Chat</span>
+          </button>
+          <button type="button" class="glass-action-btn circular-btn" id="clear-history-btn" title="Clear all chats" aria-label="Clear all chats">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+        </div>
+
+        <div class="history-list" id="history-list">
+          <!-- Items populated dynamically -->
+        </div>
+
+        <!-- 3D Glass Clear All Confirmation Modal -->
+        <div class="glass-confirm-overlay" id="clear-confirm-modal" hidden>
+          <div class="glass-confirm-box">
+            <div class="glass-confirm-icon">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <div class="glass-confirm-title">Clear all chats?</div>
+            <div class="glass-confirm-desc">Are you sure to clear all the chats? It will delete all the chat history.</div>
+            <div class="glass-confirm-actions">
+              <button type="button" class="glass-confirm-btn cancel" id="clear-cancel-btn">Cancel</button>
+              <button type="button" class="glass-confirm-btn confirm" id="clear-yes-btn">Yes</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Background -->
+      <div class="drawer-panel" id="panel-background">
+        <div class="bg-section">
+          <h3><i class="fa-solid fa-video"></i> Live Video Background</h3>
+          <p class="section-desc">Upload your own video or enter a direct MP4/WebM URL.</p>
+
+          <div class="media-input-group">
+            <label class="media-file-label" for="bg-video-input">
+              <i class="fa-solid fa-file-video"></i>
+              <span>Upload Video File</span>
+            </label>
+            <input type="file" id="bg-video-input" accept="video/mp4,video/webm" hidden />
+          </div>
+
+          <div class="media-url-row">
+            <input
+              type="url"
+              class="media-url-input"
+              id="bg-video-url-input"
+              placeholder="Paste direct .mp4 URL..."
+            />
+            <button type="button" class="media-apply-btn" id="apply-video-url-btn">Apply</button>
+          </div>
+        </div>
+
+        <div class="bg-section">
+          <h3><i class="fa-solid fa-image"></i> Image Background</h3>
+          <p class="section-desc">Replace background with a custom wallpaper or photo.</p>
+
+          <div class="media-input-group">
+            <label class="media-file-label" for="bg-image-input">
+              <i class="fa-solid fa-file-image"></i>
+              <span>Upload Image File</span>
+            </label>
+            <input type="file" id="bg-image-input" accept="image/*" hidden />
+          </div>
+
+          <div class="media-url-row">
+            <input
+              type="url"
+              class="media-url-input"
+              id="bg-image-url-input"
+              placeholder="Paste image URL..."
+            />
+            <button type="button" class="media-apply-btn" id="apply-image-url-btn">Apply</button>
+          </div>
+        </div>
+
+        <div class="bg-section rollback-section">
+          <h3><i class="fa-solid fa-rotate-left"></i> Restore Original</h3>
+          <p class="section-desc">Roll back to the default original live video background.</p>
+          <button type="button" class="glass-action-btn rollback-btn" id="rollback-bg-btn">
+            <i class="fa-solid fa-arrow-rotate-left"></i>
+            <span>Roll Back</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Floating Rectangular Glass Buttons on Left Corner for Conversation Turns (Matches User Reference Image) -->
+  <nav class="history-side-tracker" id="history-side-tracker" aria-label="Conversation Turns"></nav>
+
+  <div class="page">
+    <!-- Hero (center) -->
+    <main class="hero">
+      <!-- Headline -->
+      <h1 class="headline anim">
+        <span class="headline-line" style="--line-d: 0.12s">Intelligence</span>
+        <span class="headline-line" style="--line-d: 0.3s">Brings Revolution</span>
+      </h1>
+
+      <!-- 3D Glass Prompt Card -->
+      <div class="prompt-card-wrapper">
+        <!-- AI Response Box (Above Prompt Card with Smooth 3D Glass Reveal) -->
+        <div class="ai-response-box" id="ai-response-box" hidden>
+          <div class="ai-response-top-bar">
+            <button type="button" class="ai-copy-btn" id="ai-copy-btn" title="Copy response" aria-label="Copy response">
+              <i class="fa-regular fa-copy"></i>
+              <span>Copy</span>
+            </button>
+          </div>
+          <div class="ai-response-scroll" id="ai-response-scroll">
+            <div class="ai-response-text" id="ai-response-text"></div>
+          </div>
+        </div>
+
+        <!-- 3D Realistic Circular Glass Scroll-to-Bottom Button (Centered between Answer Card and Input Card) -->
+        <div class="ai-scroll-btn-wrapper" id="ai-scroll-btn-wrapper">
+          <button type="button" class="ai-scroll-bottom-btn" id="ai-scroll-bottom-btn" aria-label="Scroll to bottom" title="Scroll to bottom">
+            <i class="fa-solid fa-chevron-down"></i>
+          </button>
+        </div>
+
+        <div class="prompt-card">
+          <div class="prompt-card-glow" aria-hidden="true"></div>
+          <div class="prompt-card-inner">
+            <!-- Top Input Row: Textarea + Translucent Glass Scrollbar -->
+            <div class="prompt-input-row">
+              <textarea
+                class="prompt-input"
+                id="prompt-input"
+                placeholder="Ask anything or enter your prompt..."
+                rows="1"
+              ></textarea>
+              <!-- Translucent glass scrollbar on the Right side of textarea -->
+              <div class="prompt-scrollbar-track" id="prompt-scrollbar-track" title="Scroll prompt">
+                <div class="prompt-scrollbar-thumb" id="prompt-scrollbar-thumb"></div>
+              </div>
+            </div>
+
+            <!-- Attachments Area (revealed when files are selected) -->
+            <div class="prompt-attachments-container" id="prompt-attachments-container" hidden></div>
+
+            <!-- Bottom Row: Circular Upload Button & Text Generation Model on LEFT, Send Button on RIGHT -->
+            <div class="prompt-card-bottom">
+              <div class="prompt-card-bottom-left">
+                <!-- 3D Realistic Circular Glass Upload File Button (on LEFT side of Text Generation Button) -->
+                <div class="prompt-upload-wrapper">
+                  <input
+                    type="file"
+                    id="prompt-file-input"
+                    class="prompt-file-input"
+                    style="display: none;"
+                    multiple
+                  />
+                  <button
+                    type="button"
+                    class="prompt-upload-btn"
+                    id="prompt-upload-btn"
+                    title="Upload File"
+                    aria-label="Upload file"
+                  >
+                    <i class="fa-solid fa-paperclip upload-icon"></i>
+                  </button>
+                </div>
+
+                <!-- Anchor for 3D Morphing Button -->
+                <div class="model-select-anchor">
+                <!-- 3D Realistic Glass Button that slides down and shows models inside itself -->
+                <div class="model-select-wrapper" id="model-select-wrapper">
+                  <div
+                    class="model-select-btn"
+                    id="model-select-btn"
+                    role="button"
+                    tabindex="0"
+                    aria-haspopup="listbox"
+                    aria-expanded="false"
+                    title="Select AI Model"
+                  >
+                    <div class="model-select-btn-content">
+                      <span class="model-select-icon" id="current-model-icon">
+                        <i class="fa-solid fa-code"></i>
+                      </span>
+                      <!-- The model label: disappears when open -->
+                      <span class="model-select-label" id="current-model-label">Text Generation</span>
+                      <!-- Replaces the text on top when open -->
+                      <span class="model-select-open-label">Select AI Model</span>
+                    </div>
+                    <i class="fa-solid fa-chevron-down model-select-arrow" id="model-select-arrow"></i>
+                  </div>
+
+                  <!-- Model List Revealed INSIDE That Button Only with 3D Glass Effect -->
+                  <div class="model-dropdown-menu" id="model-dropdown-menu" role="listbox" aria-label="Select AI Model">
+                    <!-- Auto Option (Smart Route) -->
+                  <div class="model-option" data-model="auto" role="option">
+                    <div class="model-option-icon auto-icon">
+                      <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    </div>
+                    <div class="model-option-details">
+                      <div class="model-option-title">Auto (Smart Route) </div>
+                      <div class="model-option-desc">Auto-selects optimal model from prompt</div>
+                    </div>
+                    <i class="fa-solid fa-check model-option-check"></i>
+                  </div>
+
+                  <!-- Text Generation Model (Default: Qwen3-Coder 480B Cloud) -->
+                  <div class="model-option active" data-model="text" role="option">
+                    <div class="model-option-icon text-icon">
+                      <i class="fa-solid fa-code"></i>
+                    </div>
+                    <div class="model-option-details">
+                      <div class="model-option-title">Text Generation Model </div>
+                      <div class="model-option-desc">Learn, Research And Create</div>
+                    </div>
+                    <i class="fa-solid fa-check model-option-check"></i>
+                  </div>
+
+
+              
+
+                  <!-- Cybersecurity Model -->
+                  <div class="model-option" data-model="cybersecurity" role="option">
+                    <div class="model-option-icon cyber-icon">
+                      <i class="fa-solid fa-shield-halved"></i>
+                    </div>
+                    <div class="model-option-details">
+                      <div class="model-option-title">Cybersecurity Model</div>
+                      <div class="model-option-desc">Exploit analysis, CVE auditing & SecOps</div>
+                    </div>
+                    <i class="fa-solid fa-check model-option-check"></i>
+                  </div>
+
+                  <!-- Image Generation Model (FLUX.1 Schnell fp8) -->
+                  <div class="model-option" data-model="image-gen" role="option">
+                    <div class="model-option-icon image-icon">
+                      <i class="fa-solid fa-palette"></i>
+                    </div>
+                    <div class="model-option-details">
+                      <div class="model-option-title">Image Generation Model</div>
+                      <div class="model-option-desc">Generates Quality Images</div>
+                    </div>
+                    <i class="fa-solid fa-check model-option-check"></i>
+                  </div>
+
+                  <!-- Video Generation Model -->
+                  <div class="model-option" data-model="video-gen" role="option">
+                    <div class="model-option-icon video-icon">
+                      <i class="fa-solid fa-clapperboard"></i>
+                    </div>
+                    <div class="model-option-details">
+                      <div class="model-option-title">Video Generation Model</div>
+                      <div class="model-option-desc">Generates Quality Videos</div>
+                    </div>
+                    <i class="fa-solid fa-check model-option-check"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right side: Send / Stop Button firmly on the right corner -->
+          <div class="prompt-card-actions">
+              <button
+                type="button"
+                class="prompt-btn"
+                id="prompt-action-btn"
+                aria-label="Send prompt"
+              >
+                <!-- Loading RGB laser perimeter border on Stop state -->
+                <span class="btn-rgb-border" aria-hidden="true"></span>
+                <span class="btn-icon send-icon">
+                  <i class="fa-solid fa-arrow-up"></i>
+                </span>
+                <span class="btn-icon stop-icon">
+                  <i class="fa-solid fa-square"></i>
+                </span>
+                <span class="btn-icon continue-icon">
+                  <i class="fa-solid fa-play"></i>
+                </span>
+                <span class="btn-label">Send</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+    <!-- Stats footer -->
+    <footer class="stats" aria-label="Platform Statistics">
+      <div
+        class="stat-item anim"
+        style="--d: 0.5s"
+        data-suffix="ms"
+      >
+        <span class="stat-icon" aria-hidden="true">&lt;</span>
+        <span class="stat-value">Response</span>
+        <span class="stat-label">On Time</span>
+      </div>
+
+      <div
+        class="stat-item anim"
+        style="--d: 0.58s"
+        data-target="99.99"
+        data-suffix="%"
+        data-decimals="2"
+      >
+        <span class="stat-icon" aria-hidden="true">%</span>
+        <span class="stat-value"><span class="stat-num">0.00</span><span class="stat-suffix">%</span></span>
+        <span class="stat-label">Accuracy</span>
+      </div>
+
+      <div
+        class="stat-item anim"
+        style="--d: 0.66s"
+        data-target="24"
+        data-suffix="/7"
+        data-decimals="0"
+      >
+        <span class="stat-icon" aria-hidden="true">*</span>
+        <span class="stat-value"><span class="stat-num">0</span><span class="stat-suffix">/7</span></span>
+        <span class="stat-label">Active</span>
+      </div>
+
+      <div
+        class="stat-item anim"
+        style="--d: 0.74s"
+        data-target="2.4"
+        data-suffix="M"
+        data-decimals="1"
+      >
+        <span class="stat-icon" aria-hidden="true">#</span>
+        <span class="stat-value"><span class="stat-suffix">Unlimited</span></span>
+        <span class="stat-label">Tokens</span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="main.js"></script>
+</body>
+</html>
