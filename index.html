@@ -100,9 +100,7 @@
         <!-- 3D Glass Clear All Confirmation Modal -->
         <div class="glass-confirm-overlay" id="clear-confirm-modal" hidden>
           <div class="glass-confirm-box">
-            <div class="glass-confirm-icon">
-              <i class="fa-solid fa-triangle-exclamation"></i>
-            </div>
+            
             <div class="glass-confirm-title">Clear all chats?</div>
             <div class="glass-confirm-desc">Are you sure to clear all the chats? It will delete all the chat history.</div>
             <div class="glass-confirm-actions">
@@ -169,6 +167,14 @@
             <span>Roll Back</span>
           </button>
         </div>
+      </div>
+
+      <!-- Drawer Bottom: Switch to Online / Offline Mode Toggle Button -->
+      <div class="drawer-mode-switch-wrapper">
+        <button type="button" class="drawer-mode-toggle-btn" id="drawer-mode-toggle-btn" title="Toggle between Online Cloud & Offline Local Mode">
+          <i class="fa-solid fa-cloud" id="drawer-toggle-icon"></i>
+          <span id="drawer-toggle-text">Switch to Online</span>
+        </button>
       </div>
     </div>
   </aside>
@@ -304,17 +310,7 @@
 
               
 
-                  <!-- Cybersecurity Model -->
-                  <div class="model-option" data-model="cybersecurity" role="option">
-                    <div class="model-option-icon cyber-icon">
-                      <i class="fa-solid fa-shield-halved"></i>
-                    </div>
-                    <div class="model-option-details">
-                      <div class="model-option-title">Cybersecurity Model</div>
-                      <div class="model-option-desc">Exploit analysis, CVE auditing & SecOps</div>
-                    </div>
-                    <i class="fa-solid fa-check model-option-check"></i>
-                  </div>
+
 
                   <!-- Image Generation Model (FLUX.1 Schnell fp8) -->
                   <div class="model-option" data-model="image-gen" role="option">
@@ -420,6 +416,160 @@
         <span class="stat-label">Tokens</span>
       </div>
     </footer>
+  </div>
+
+  <!-- 3D Glass Mode Selection & API Key Configuration Modals -->
+  <!-- 1. Welcome Glass Modal (Online or Offline Choice) -->
+  <div class="mode-modal-backdrop" id="mode-welcome-modal" style="display: none;">
+    <div class="mode-modal-glass">
+      <div class="mode-modal-header">
+       
+        <h2>Choose Execution Mode</h2>
+        <p>Select how you want to run models on this system.</p>
+      </div>
+
+      <div class="mode-modal-cards-row">
+        <!-- Online Card -->
+        <button type="button" class="mode-choice-card" id="choose-online-mode-btn">
+        
+          <h3>Online Cloud Mode</h3>
+          
+          <p>Instant inference via Cloud APIs (Groq, OpenRouter, Google Gemini). Zero local GPU/RAM requirement.</p>
+          <b>Note:</b>
+          <p>Online mode only generates Text</p>
+          <div class="mode-card-cta">
+            <span>Configure &amp; Use</span>
+            <i class="fa-solid fa-arrow-right"></i>
+          </div>
+        </button>
+
+        <!-- Offline Card -->
+        <button type="button" class="mode-choice-card" id="choose-offline-mode-btn">
+          <h3>Offline Local Mode</h3>
+          <p>Local privacy-first inference powered by Ollama (Qwen) &amp; ComfyUI (FLUX.1 Schnell + Wan2.2 Video).</p>
+          <div class="mode-card-cta">
+            <span>Run Locally</span>
+            <i class="fa-solid fa-arrow-right"></i>
+          </div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Online API Keys Configuration Modal -->
+  <div class="mode-modal-backdrop" id="online-keys-modal" style="display: none;">
+    <div class="mode-modal-glass keys-modal-glass">
+      <button type="button" class="mode-modal-close-btn" id="close-keys-modal-btn" aria-label="Close">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+
+      <div class="mode-modal-header">
+      
+        <h2>Connect Cloud API Keys</h2>
+        <p>Enter your API key(s). Keys are securely used for this session.</p>
+      </div>
+
+      <div class="api-keys-form">
+        <!-- Groq API Key -->
+        <div class="api-key-group">
+          <label for="groq-api-key-input">
+          
+            <span>Groq API Key (Ultra-fast Llama &amp; Qwen)</span>
+          </label>
+          <input
+            type="password"
+            id="groq-api-key-input"
+            class="api-key-input"
+            placeholder="gsk_..."
+            autocomplete="off"
+          />
+        </div>
+
+        <!-- OpenRouter API Key -->
+        <div class="api-key-group">
+          <label for="openrouter-api-key-input">
+           
+            <span>OpenRouter API Key (Qwen, Claude, Mistral)</span>
+          </label>
+          <input
+            type="password"
+            id="openrouter-api-key-input"
+            class="api-key-input"
+            placeholder="sk-or-v1-..."
+            autocomplete="off"
+          />
+        </div>
+
+        <!-- Gemini API Key -->
+        <div class="api-key-group">
+          <label for="gemini-api-key-input">
+            
+            <span>Google Gemini API Key (Multimodal Vision &amp; Text)</span>
+          </label>
+          <input
+            type="password"
+            id="gemini-api-key-input"
+            class="api-key-input"
+            placeholder="AIzaSy..."
+            autocomplete="off"
+          />
+        </div>
+
+        <p class="api-keys-note">
+          <i class="fa-solid fa-circle-info"></i>
+          At least one API key is required. Groq is free and recommended for instant testing.
+        </p>
+
+        <div class="api-keys-actions">
+          <button type="button" class="api-key-save-btn" id="save-api-keys-btn">
+            <i class="fa-solid fa-plus"></i>
+            <span>Add &amp; Enable Online Mode</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Offline Setup Alert Modal (when offline models are not found) -->
+  <div class="mode-modal-backdrop" id="offline-alert-modal" style="display: none;">
+    <div class="mode-modal-glass alert-modal-glass">
+      <div class="mode-modal-header">
+      
+        <h2>Offline Models Not Detected</h2>
+        <p class="alert-desc">
+          Offline models are not there. Please download them and make the connection setup.
+        </p>
+      </div>
+
+      <div class="offline-guide-box">
+        <p>To make the connection setup, read the <a href="/readme" target="_blank" rel="noopener noreferrer" class="readme-link" title="Open README.md in new tab"><strong>README.md</strong> <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 11px; margin-left: 3px;"></i></a> which is inside the project directory.</p>
+        <div class="guide-steps">
+          <div class="guide-step-item">
+            <i class="fa-solid fa-check"></i>
+            <span>1. Start Ollama with Qwen Coder model (Port 11434)</span>
+          </div>
+          <div class="guide-step-item">
+            <i class="fa-solid fa-check"></i>
+            <span>2. Start ComfyUI Desktop for Flux and Wan 2.2 (Port 8188)</span>
+          </div>
+          <div class="guide-step-item">
+            <i class="fa-solid fa-check"></i>
+            <span>3. Verify model safetensors in respective folders</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="alert-actions">
+        <button type="button" class="alert-btn secondary-btn" id="alert-use-online-btn">
+          <i class="fa-solid fa-cloud"></i>
+          <span>Use Online Mode Instead</span>
+        </button>
+        <button type="button" class="alert-btn primary-btn" id="alert-retry-offline-btn">
+          <i class="fa-solid fa-rotate"></i>
+          <span>I Have Set It Up (Retry)</span>
+        </button>
+      </div>
+    </div>
   </div>
 
   <script src="main.js"></script>

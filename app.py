@@ -3,10 +3,12 @@ import random
 import time
 import json
 import http.client
+import subprocess
+import shutil
 import urllib.request
 import urllib.error
 import urllib.parse
-from flask import Flask, request, jsonify, Response, stream_with_context
+from flask import Flask, request, jsonify, Response, stream_with_context, send_file
 from flask_cors import CORS
 
 app = Flask(__name__, static_folder=".", static_url_path="")
@@ -339,6 +341,256 @@ def chat():
             }), 502
 
 
+@app.route("/api/models/check-offline", methods=["GET"])
+def check_offline_setup():
+    """
+    Check if local Ollama and ComfyUI are running and have models available.
+    Used for silent health verification when switching to Offline mode.
+    """
+    ollama_ok = False
+    comfy_ok = False
+    models = []
+
+    try:
+        req = urllib.request.Request(f"{OLLAMA_BASE_URL}/api/tags")
+        with urllib.request.urlopen(req, timeout=0.8) as res:
+            if res.status == 200:
+                data = json.loads(res.read().decode("utf-8"))
+                models = [m.get("name", "") for m in data.get("models", [])]
+                ollama_ok = len(models) > 0
+    except Exception:
+        ollama_ok = False
+
+    try:
+        req = urllib.request.Request(f"{COMFYUI_BASE_URL}/system_stats")
+        with urllib.request.urlopen(req, timeout=0.8) as res:
+            if res.status == 200:
+                comfy_ok = True
+    except Exception:
+        comfy_ok = False
+
+    # BOTH Ollama AND ComfyUI must be running and ready.
+    # If any one is not running, all_ready is False.
+    all_ready = bool(ollama_ok and comfy_ok)
+
+    return jsonify({
+        "status": "success",
+        "ollama_ready": ollama_ok,
+        "comfy_ready": comfy_ok,
+        "models_count": len(models),
+        "all_ready": all_ready
+    })
+
+
+@app.route("/api/chat-online", methods=["POST"])
+def chat_online():
+    """
+    Proxy online cloud completions with automatic silent fallback between:
+    1. Groq (Ultra-fast LPU)
+    2. OpenRouter (High-capacity multi-model)
+    3. Google Gemini (Multimodal Flash)
+    If one provider fails, times out, or has an error, it seamlessly & silently
+    switches to the next working provider without interrupting the user.
+    """
+    data = request.get_json(silent=True) or {}
+    prompt = data.get("prompt", "").strip()
+    if not prompt:
+        return jsonify({"error": "Prompt cannot be empty"}), 400
+
+    groq_key = (data.get("groq_key") or (data.get("api_key") if data.get("provider") == "groq" else "")).strip()
+    openrouter_key = (data.get("openrouter_key") or (data.get("api_key") if data.get("provider") == "openrouter" else "")).strip()
+    gemini_key = (data.get("gemini_key") or (data.get("api_key") if data.get("provider") == "gemini" else "")).strip()
+
+    # Determine priority order of providers based on available keys
+    provider_candidates = []
+    if groq_key:
+        provider_candidates.append(("groq", groq_key))
+    if openrouter_key:
+        provider_candidates.append(("openrouter", openrouter_key))
+    if gemini_key:
+        provider_candidates.append(("gemini", gemini_key))
+
+    # Fallback to single legacy provider if passed
+    if not provider_candidates and data.get("api_key"):
+        provider_candidates.append((data.get("provider", "groq").lower(), data.get("api_key").strip()))
+
+    if not provider_candidates:
+        return jsonify({"error": "No valid online API key provided."}), 400
+
+    default_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+    online_system_instruction = (
+        "You are an expert AI assistant. Always provide well-structured, clean, elegant, and readable responses.\n"
+        "- Organize your answer with clear markdown headings (##, ###), clean paragraphs, and structured bullet points.\n"
+        "- For ANY code snippets, ALWAYS wrap them in standard markdown code blocks with the exact language identifier "
+        "(e.g. ```python, ```javascript, ```html, ```css, ```cpp, ```bash, etc.). Never output unformatted code.\n"
+        "- Ensure all code is cleanly indented, complete, and properly commented.\n"
+        "- Keep explanations direct, well-paced, and concise."
+    )
+
+    def try_provider_stream(provider_name, key):
+        """Attempts to open a streaming connection to a specific provider. Returns (resp, error)."""
+        messages = [
+            {"role": "system", "content": online_system_instruction},
+            {"role": "user", "content": prompt}
+        ]
+
+        if provider_name == "groq":
+            groq_model = None
+            try:
+                models_req = urllib.request.Request(
+                    "https://api.groq.com/openai/v1/models",
+                    headers={"Authorization": f"Bearer {key}", "User-Agent": default_user_agent}
+                )
+                with urllib.request.urlopen(models_req, timeout=4) as m_resp:
+                    m_data = json.loads(m_resp.read().decode("utf-8"))
+                    avail_models = [m.get("id") for m in m_data.get("data", []) if m.get("id")]
+                    if avail_models:
+                        chat_models = [
+                            m for m in avail_models
+                            if not any(x in m.lower() for x in ["orpheus", "guard", "whisper", "vision", "embed", "moderation", "classification", "tts", "stt"])
+                        ]
+                        preferred = [
+                            "llama-3.3-70b-versatile",
+                            "llama-3.1-8b-instant",
+                            "llama3-70b-8192",
+                            "llama3-8b-8192",
+                            "mixtral-8x7b-32768",
+                            "gemma2-9b-it"
+                        ]
+                        for pref in preferred:
+                            if pref in avail_models:
+                                groq_model = pref
+                                break
+                        if not groq_model and chat_models:
+                            groq_model = chat_models[0]
+            except Exception:
+                pass
+
+            if not groq_model:
+                groq_model = "mixtral-8x7b-32768"
+
+            url = "https://api.groq.com/openai/v1/chat/completions"
+            payload = json.dumps({
+                "model": groq_model,
+                "messages": messages,
+                "max_tokens": 8192,
+                "stream": True
+            }).encode("utf-8")
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {key}",
+                "User-Agent": default_user_agent,
+                "Accept": "text/event-stream, application/json"
+            }
+
+        elif provider_name == "openrouter":
+            url = "https://openrouter.ai/api/v1/chat/completions"
+            payload = json.dumps({
+                "model": "qwen/qwen-2.5-coder-32b-instruct",
+                "messages": messages,
+                "max_tokens": 8192,
+                "stream": True
+            }).encode("utf-8")
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {key}",
+                "HTTP-Referer": "http://localhost:5000",
+                "X-Title": "ChatbotAI",
+                "User-Agent": default_user_agent,
+                "Accept": "text/event-stream, application/json"
+            }
+
+        elif provider_name == "gemini":
+            url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+            payload = json.dumps({
+                "model": "gemini-1.5-flash",
+                "messages": messages,
+                "max_tokens": 8192,
+                "stream": True
+            }).encode("utf-8")
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {key}",
+                "User-Agent": default_user_agent,
+                "Accept": "text/event-stream, application/json"
+            }
+        else:
+            return None, f"Unsupported provider: {provider_name}"
+
+        req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+        try:
+            resp = urllib.request.urlopen(req, timeout=300)
+            return resp, None
+        except urllib.error.HTTPError as he:
+            err_body = he.read().decode("utf-8", errors="replace")
+            try:
+                err_json = json.loads(err_body)
+                err_msg = err_json.get("error", {}).get("message") or err_body
+            except Exception:
+                err_msg = err_body
+            return None, f"{provider_name.upper()} error ({he.code}): {err_msg}"
+        except Exception as e:
+            return None, f"{provider_name.upper()} connection error: {str(e)}"
+
+    def stream_with_silent_fallback():
+        active_resp = None
+        last_error = None
+
+        # Try providers sequentially; switch silently if one fails
+        for p_name, p_key in provider_candidates:
+            resp, err = try_provider_stream(p_name, p_key)
+            if resp:
+                print(f"[Online Chat] Successfully connected to {p_name.upper()}. Streaming response...")
+                active_resp = resp
+                break
+            else:
+                print(f"[Online Chat] {p_name.upper()} failed ({err}). Silently switching to next available provider...")
+                last_error = err
+
+        if not active_resp:
+            yield f"data: {json.dumps({'error': f'All online providers failed. Last error: {last_error}'})}\n\n"
+            return
+
+        try:
+            for raw_line in active_resp:
+                line = raw_line.decode("utf-8", errors="replace").strip()
+                if not line:
+                    continue
+                if line.startswith("data: "):
+                    data_str = line[6:].strip()
+                    if data_str == "[DONE]":
+                        yield f"data: {json.dumps({'token': '', 'done': True})}\n\n"
+                        break
+                    try:
+                        parsed = json.loads(data_str)
+                        choices = parsed.get("choices", [])
+                        if choices:
+                            delta = choices[0].get("delta", {})
+                            token = delta.get("content", "")
+                            if token:
+                                yield f"data: {json.dumps({'token': token, 'done': False})}\n\n"
+                    except Exception:
+                        pass
+        except Exception as e:
+            yield f"data: {json.dumps({'error': f'Stream interrupted: {str(e)}'})}\n\n"
+        finally:
+            try:
+                active_resp.close()
+            except Exception:
+                pass
+
+    return Response(
+        stream_with_context(stream_with_silent_fallback()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive"
+        }
+    )
+
+
 # ===========================================================================
 # ComfyUI Flux1-Schnell-fp8 Integration
 # ===========================================================================
@@ -497,29 +749,124 @@ def generate_image():
 
 @app.route("/api/comfy-view", methods=["GET"])
 def comfy_view_proxy():
-    """Proxy ComfyUI generated image or video output directly to browser."""
+    """Proxy ComfyUI generated image or video output directly to browser with streaming & range support."""
     filename = request.args.get("filename", "")
     subfolder = request.args.get("subfolder", "")
     img_type = request.args.get("type", "output")
     comfy_url = f"{COMFYUI_BASE_URL}/view?filename={urllib.parse.quote(filename)}&subfolder={urllib.parse.quote(subfolder)}&type={img_type}"
     try:
-        req = urllib.request.Request(comfy_url)
-        with urllib.request.urlopen(req, timeout=30) as res:
-            content = res.read()
-            mimetype = res.headers.get("Content-Type")
-            if not mimetype:
-                fn_lower = filename.lower()
-                if fn_lower.endswith(".webm"):
-                    mimetype = "video/webm"
-                elif fn_lower.endswith(".mp4"):
-                    mimetype = "video/mp4"
-                elif fn_lower.endswith(".webp"):
-                    mimetype = "image/webp"
-                else:
-                    mimetype = "image/png"
-            return Response(content, mimetype=mimetype)
+        req_headers = {}
+        if "Range" in request.headers:
+            req_headers["Range"] = request.headers["Range"]
+
+        req = urllib.request.Request(comfy_url, headers=req_headers)
+        try:
+            res = urllib.request.urlopen(req, timeout=30)
+            status_code = res.status
+        except urllib.error.HTTPError as he:
+            if he.code == 206:
+                res = he
+                status_code = 206
+            else:
+                raise he
+
+        content = res.read()
+        mimetype = res.headers.get("Content-Type")
+        if not mimetype:
+            fn_lower = filename.lower()
+            if fn_lower.endswith(".webm"):
+                mimetype = "video/webm"
+            elif fn_lower.endswith(".mp4"):
+                mimetype = "video/mp4"
+            elif fn_lower.endswith(".webp"):
+                mimetype = "image/webp"
+            else:
+                mimetype = "image/png"
+
+        resp = Response(content, status=status_code, mimetype=mimetype)
+        resp.headers["Accept-Ranges"] = "bytes"
+        resp.headers["Cache-Control"] = "public, max-age=86400, immutable"
+        if res.headers.get("Content-Range"):
+            resp.headers["Content-Range"] = res.headers.get("Content-Range")
+        if res.headers.get("Content-Length"):
+            resp.headers["Content-Length"] = res.headers.get("Content-Length")
+        return resp
     except Exception as e:
         return jsonify({"error": f"Failed to retrieve media: {e}"}), 404
+
+
+OUTPUTS_DIR = os.path.join(os.path.dirname(__file__), "outputs")
+os.makedirs(OUTPUTS_DIR, exist_ok=True)
+
+
+def find_ffmpeg():
+    """Locate ffmpeg binary on system, ComfyUI Desktop installation, or environment."""
+    path = shutil.which("ffmpeg")
+    if path:
+        return path
+
+    try:
+        import imageio_ffmpeg
+        path = imageio_ffmpeg.get_ffmpeg_exe()
+        if path and os.path.exists(path):
+            return path
+    except Exception:
+        pass
+
+    candidates = [
+        r"C:\ffmpeg\bin\ffmpeg.exe",
+        r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+        r"C:\Program Files (x86)\ffmpeg\bin\ffmpeg.exe",
+        os.path.expanduser(r"~\AppData\Local\Programs\ComfyUI\resources\app\bin\ffmpeg.exe"),
+        os.path.expanduser(r"~\AppData\Local\Programs\ComfyUI\ffmpeg.exe"),
+        os.path.expanduser(r"~\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe"),
+        os.path.expanduser(r"~\miniconda3\Scripts\ffmpeg.exe"),
+        os.path.expanduser(r"~\anaconda3\Scripts\ffmpeg.exe"),
+    ]
+    for p in candidates:
+        if os.path.isfile(p):
+            return p
+
+    comfy_dir = os.path.expanduser(r"~\AppData\Local\Programs\ComfyUI")
+    if os.path.isdir(comfy_dir):
+        for root, dirs, files in os.walk(comfy_dir):
+            if "ffmpeg.exe" in files:
+                return os.path.join(root, "ffmpeg.exe")
+
+    return "ffmpeg"
+
+
+def convert_to_mp4(input_path, output_mp4_path):
+    """Convert any video or animated file to high-compatibility MP4 (H.264 / faststart)."""
+    ffmpeg_exe = find_ffmpeg()
+    cmd = [
+        ffmpeg_exe,
+        "-y",
+        "-i", input_path,
+        "-c:v", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-preset", "veryfast",
+        "-crf", "18",
+        "-movflags", "+faststart",
+        output_mp4_path
+    ]
+    try:
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+        return res.returncode == 0 and os.path.exists(output_mp4_path) and os.path.getsize(output_mp4_path) > 0
+    except Exception as e:
+        print(f"[Conversion Error] ffmpeg conversion failed: {e}")
+        return False
+
+
+@app.route("/api/video/<filename>", methods=["GET"])
+def serve_video(filename):
+    """Serve converted MP4 video files with range requests and caching."""
+    file_path = os.path.join(OUTPUTS_DIR, filename)
+    if not os.path.exists(file_path):
+        return jsonify({"error": "Video not found"}), 404
+    resp = send_file(file_path, mimetype="video/mp4", as_attachment=False, conditional=True)
+    resp.headers["Cache-Control"] = "public, max-age=86400, immutable"
+    return resp
 
 
 def load_wan_video_workflow():
@@ -622,14 +969,30 @@ def generate_video():
                         raise Exception(err_str)
 
                     prompt_outputs = target_hist.get("outputs", {})
+                    # 1. First priority: Real video files (.webm, .mp4, .mkv)
                     for node_id, out in prompt_outputs.items():
                         if isinstance(out, dict):
                             for key in ["videos", "gifs", "images"]:
-                                if key in out and len(out[key]) > 0:
-                                    video_info = out[key][0]
+                                for item in out.get(key, []):
+                                    fn = (item.get("filename") or "").lower()
+                                    if fn.endswith(".webm") or fn.endswith(".mp4") or fn.endswith(".mkv"):
+                                        video_info = item
+                                        break
+                                if video_info:
                                     break
                         if video_info:
                             break
+
+                    # 2. Second priority: If no direct video file, take any animated gif/webp/image output
+                    if not video_info:
+                        for node_id, out in prompt_outputs.items():
+                            if isinstance(out, dict):
+                                for key in ["videos", "gifs", "images"]:
+                                    if key in out and len(out[key]) > 0:
+                                        video_info = out[key][0]
+                                        break
+                            if video_info:
+                                break
 
                     if video_info:
                         break
@@ -647,7 +1010,35 @@ def generate_video():
         filename = video_info.get("filename")
         subfolder = video_info.get("subfolder", "")
         file_type = video_info.get("type", "output")
-        video_url = f"/api/comfy-view?filename={urllib.parse.quote(filename)}&subfolder={urllib.parse.quote(subfolder)}&type={file_type}"
+
+        # Ensure video output is strictly MP4 (convert from webm/webp via ffmpeg)
+        if not filename.lower().endswith(".mp4"):
+            try:
+                comfy_view_url = f"{COMFYUI_BASE_URL}/view?filename={urllib.parse.quote(filename)}&subfolder={urllib.parse.quote(subfolder)}&type={file_type}"
+                temp_input = os.path.join(OUTPUTS_DIR, f"temp_{int(time.time() * 1000)}_{filename}")
+                mp4_filename = f"wan2_{int(time.time() * 1000)}.mp4"
+                mp4_path = os.path.join(OUTPUTS_DIR, mp4_filename)
+
+                with urllib.request.urlopen(comfy_view_url, timeout=60) as resp:
+                    with open(temp_input, "wb") as f_out:
+                        f_out.write(resp.read())
+
+                if convert_to_mp4(temp_input, mp4_path):
+                    video_url = f"/api/video/{mp4_filename}"
+                    filename = mp4_filename
+                else:
+                    video_url = f"/api/comfy-view?filename={urllib.parse.quote(filename)}&subfolder={urllib.parse.quote(subfolder)}&type={file_type}"
+
+                if os.path.exists(temp_input):
+                    try:
+                        os.remove(temp_input)
+                    except Exception:
+                        pass
+            except Exception as conv_err:
+                print(f"[Warning] MP4 conversion error: {conv_err}")
+                video_url = f"/api/comfy-view?filename={urllib.parse.quote(filename)}&subfolder={urllib.parse.quote(subfolder)}&type={file_type}"
+        else:
+            video_url = f"/api/comfy-view?filename={urllib.parse.quote(filename)}&subfolder={urllib.parse.quote(subfolder)}&type={file_type}"
 
         return jsonify({
             "status": "success",
@@ -727,6 +1118,15 @@ def stop_image_generation():
     # Free model from memory completely
     free_comfyui_memory()
     return jsonify({"status": "stopped", "message": "ComfyUI generation interrupted and model unloaded."})
+
+
+@app.route("/readme")
+def serve_readme():
+    """Serve README.md directly to the browser with clean text formatting."""
+    readme_path = os.path.join(os.path.dirname(__file__), "README.md")
+    if os.path.exists(readme_path):
+        return send_file(readme_path, mimetype="text/plain; charset=utf-8")
+    return "README.md not found.", 404
 
 
 @app.route("/")

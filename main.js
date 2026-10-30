@@ -379,6 +379,9 @@ document.addEventListener('DOMContentLoaded', () => {
           fetch(`${BACKEND_URL}/api/stop-video`, { method: 'POST' }).catch(() => {});
           // Stop all other models (like qwen3-coder:30b) so no load is put on the system
           unloadOtherOllamaModels('philbert440');
+        } else if (selectedKey === 'image-text') {
+          fetch(`${BACKEND_URL}/api/stop-image`, { method: 'POST' }).catch(() => {});
+          fetch(`${BACKEND_URL}/api/stop-video`, { method: 'POST' }).catch(() => {});
         }
 
         // Update active class
@@ -515,6 +518,189 @@ document.addEventListener('DOMContentLoaded', () => {
   let cachedModelName = null;
   const BACKEND_URL = 'http://127.0.0.1:5000';
   const historySideTracker = document.getElementById('history-side-tracker');
+
+  // Execution Mode State: 'offline' (default) or 'online'
+  let currentExecutionMode = localStorage.getItem('chatbotai_mode') || 'offline';
+  let apiKeys = {
+    groq: localStorage.getItem('chatbotai_groq_key') || '',
+    openrouter: localStorage.getItem('chatbotai_openrouter_key') || '',
+    gemini: localStorage.getItem('chatbotai_gemini_key') || ''
+  };
+
+  // Elements for Online/Offline Modals
+  const modeWelcomeModal = document.getElementById('mode-welcome-modal');
+  const chooseOnlineModeBtn = document.getElementById('choose-online-mode-btn');
+  const chooseOfflineModeBtn = document.getElementById('choose-offline-mode-btn');
+
+  const onlineKeysModal = document.getElementById('online-keys-modal');
+  const closeKeysModalBtn = document.getElementById('close-keys-modal-btn');
+  const groqApiKeyInput = document.getElementById('groq-api-key-input');
+  const openrouterApiKeyInput = document.getElementById('openrouter-api-key-input');
+  const geminiApiKeyInput = document.getElementById('gemini-api-key-input');
+  const saveApiKeysBtn = document.getElementById('save-api-keys-btn');
+
+  const offlineAlertModal = document.getElementById('offline-alert-modal');
+  const alertUseOnlineBtn = document.getElementById('alert-use-online-btn');
+  const alertRetryOfflineBtn = document.getElementById('alert-retry-offline-btn');
+
+  // Sidebar Drawer Bottom Toggle Button
+  const drawerModeToggleBtn = document.getElementById('drawer-mode-toggle-btn');
+  const drawerToggleIcon = document.getElementById('drawer-toggle-icon');
+  const drawerToggleText = document.getElementById('drawer-toggle-text');
+
+  function updateModeUI(mode) {
+    currentExecutionMode = mode;
+    localStorage.setItem('chatbotai_mode', mode);
+
+    if (mode === 'online') {
+      // Hide the local dropdown wrapper completely
+      if (modelSelectWrapper) modelSelectWrapper.style.display = 'none';
+
+      // Update sidebar drawer toggle button to "Switch to Offline"
+      if (drawerToggleIcon) drawerToggleIcon.className = 'fa-solid fa-desktop';
+      if (drawerToggleText) drawerToggleText.textContent = 'Switch to Offline';
+    } else {
+      // Offline mode: restore local dropdown
+      if (modelSelectWrapper) modelSelectWrapper.style.display = 'block';
+
+      // Update sidebar drawer toggle button to "Switch to Online"
+      if (drawerToggleIcon) drawerToggleIcon.className = 'fa-solid fa-cloud';
+      if (drawerToggleText) drawerToggleText.textContent = 'Switch to Online';
+    }
+  }
+
+  // Silent verification if local Ollama AND ComfyUI models are both setup
+  async function verifyOfflineSetupSilently() {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/models/check-offline`);
+      if (res.ok) {
+        const data = await res.json();
+        // Both Ollama and ComfyUI must be running
+        return Boolean(data.all_ready && data.ollama_ready && data.comfy_ready);
+      }
+    } catch (_) {}
+
+    return false;
+  }
+
+  // Show welcome modal on page load instantly in milliseconds
+  window.addEventListener('DOMContentLoaded', () => {
+    // Fill in any previously saved keys
+    if (groqApiKeyInput) groqApiKeyInput.value = apiKeys.groq;
+    if (openrouterApiKeyInput) openrouterApiKeyInput.value = apiKeys.openrouter;
+    if (geminiApiKeyInput) geminiApiKeyInput.value = apiKeys.gemini;
+
+    const hasPrompted = sessionStorage.getItem('chatbotai_mode_prompted');
+    if (!hasPrompted) {
+      setTimeout(() => {
+        if (modeWelcomeModal) modeWelcomeModal.style.display = 'flex';
+      }, 50); // Milliseconds instant reveal
+    } else {
+      updateModeUI(currentExecutionMode);
+    }
+  });
+
+  // Welcome Modal: Online Choice -> Open Keys Config
+  if (chooseOnlineModeBtn) {
+    chooseOnlineModeBtn.addEventListener('click', () => {
+      if (modeWelcomeModal) modeWelcomeModal.style.display = 'none';
+      if (onlineKeysModal) onlineKeysModal.style.display = 'flex';
+    });
+  }
+
+  // Welcome Modal: Offline Choice -> Verify silently
+  if (chooseOfflineModeBtn) {
+    chooseOfflineModeBtn.addEventListener('click', async () => {
+      if (modeWelcomeModal) modeWelcomeModal.style.display = 'none';
+      sessionStorage.setItem('chatbotai_mode_prompted', 'true');
+
+      const isReady = await verifyOfflineSetupSilently();
+      if (isReady) {
+        updateModeUI('offline');
+      } else {
+        if (offlineAlertModal) offlineAlertModal.style.display = 'flex';
+      }
+    });
+  }
+
+  // Close Keys Modal
+  if (closeKeysModalBtn) {
+    closeKeysModalBtn.addEventListener('click', () => {
+      if (onlineKeysModal) onlineKeysModal.style.display = 'none';
+      sessionStorage.setItem('chatbotai_mode_prompted', 'true');
+    });
+  }
+
+  // Save API Keys & Enable Online Mode
+  if (saveApiKeysBtn) {
+    saveApiKeysBtn.addEventListener('click', () => {
+      const groqKey = groqApiKeyInput ? groqApiKeyInput.value.trim() : '';
+      const openrouterKey = openrouterApiKeyInput ? openrouterApiKeyInput.value.trim() : '';
+      const geminiKey = geminiApiKeyInput ? geminiApiKeyInput.value.trim() : '';
+
+      if (!groqKey && !openrouterKey && !geminiKey) {
+        alert('Please enter at least one API key (Groq, OpenRouter, or Gemini).');
+        return;
+      }
+
+      apiKeys.groq = groqKey;
+      apiKeys.openrouter = openrouterKey;
+      apiKeys.gemini = geminiKey;
+
+      if (groqKey) localStorage.setItem('chatbotai_groq_key', groqKey);
+      if (openrouterKey) localStorage.setItem('chatbotai_openrouter_key', openrouterKey);
+      if (geminiKey) localStorage.setItem('chatbotai_gemini_key', geminiKey);
+
+      sessionStorage.setItem('chatbotai_mode_prompted', 'true');
+      if (onlineKeysModal) onlineKeysModal.style.display = 'none';
+      updateModeUI('online');
+    });
+  }
+
+  // Offline Alert: Use Online Mode Instead
+  if (alertUseOnlineBtn) {
+    alertUseOnlineBtn.addEventListener('click', () => {
+      if (offlineAlertModal) offlineAlertModal.style.display = 'none';
+      if (onlineKeysModal) onlineKeysModal.style.display = 'flex';
+    });
+  }
+
+  // Offline Alert: Retry
+  if (alertRetryOfflineBtn) {
+    alertRetryOfflineBtn.addEventListener('click', async () => {
+      const isReady = await verifyOfflineSetupSilently();
+      if (isReady) {
+        if (offlineAlertModal) offlineAlertModal.style.display = 'none';
+        updateModeUI('offline');
+      } else {
+        alert('Offline models still not detected on localhost:11434 or localhost:8188. Please follow README.md instructions!');
+      }
+    });
+  }
+
+  // Sidebar Drawer Bottom Toggle Button Click Handler
+  if (drawerModeToggleBtn) {
+    drawerModeToggleBtn.addEventListener('click', async () => {
+      closeDrawer();
+      if (currentExecutionMode === 'offline') {
+        // Switch to Online mode: check if API keys are set, otherwise open key modal
+        const hasKeys = Boolean(apiKeys.groq || apiKeys.openrouter || apiKeys.gemini);
+        if (hasKeys) {
+          updateModeUI('online');
+        } else {
+          if (onlineKeysModal) onlineKeysModal.style.display = 'flex';
+        }
+      } else {
+        // Switch to Offline mode: verify Ollama and ComfyUI silently
+        const isReady = await verifyOfflineSetupSilently();
+        if (isReady) {
+          updateModeUI('offline');
+        } else {
+          if (offlineAlertModal) offlineAlertModal.style.display = 'flex';
+        }
+      }
+    });
+  }
 
   // Unload any heavy model from GPU/RAM via Ollama /api/generate keep_alive: 0
   async function unloadHeavyModelFromMemory(modelPattern = 'philbert440') {
@@ -734,15 +920,182 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function highlightSyntax(code) {
-    let escaped = escapeHtml(code);
-    escaped = escaped.replace(/(#.*|\/\/.*)$/gm, '<span class="tok-comment">$1</span>');
-    escaped = escaped.replace(/("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)/g, '<span class="tok-str">$1</span>');
-    const keywords = /\b(def|class|import|from|return|if|else|elif|for|while|try|except|finally|with|as|async|await|const|let|var|function|public|private|protected|interface|implements|extends|static|struct|type|enum|package|switch|case|break|continue|default|throw|new|this|super|true|false|null|undefined|None|True|False|self)\b/g;
-    escaped = escaped.replace(keywords, '<span class="tok-kw">$1</span>');
-    const types = /\b(int|float|str|bool|list|dict|set|tuple|void|number|string|boolean|any|object|Promise|Array|Map|Set)\b/g;
-    escaped = escaped.replace(types, '<span class="tok-type">$1</span>');
-    escaped = escaped.replace(/\b(\d+(\.\d+)?)\b/g, '<span class="tok-num">$1</span>');
-    return escaped;
+    if (!code) return '';
+
+    const tokenRegex = /(\/\*[\s\S]*?\*\/|\/\/.*|#.*)|("""(?:\\.|[\s\S])*?"""|'''(?:\\.|[\s\S])*?'''|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|(\b(?:def|class|import|from|return|if|else|elif|for|while|try|except|finally|with|as|async|await|const|let|var|function|public|private|protected|interface|implements|extends|static|struct|type|enum|package|switch|case|break|continue|default|throw|new|this|super|true|false|null|undefined|None|True|False|self)\b)|(\b(?:int|float|str|bool|list|dict|set|tuple|void|number|string|boolean|any|object|Promise|Array|Map|Set)\b)|(\b\d+(?:\.\d+)?\b)/g;
+
+    let result = '';
+    let lastIndex = 0;
+    let match;
+
+    while ((match = tokenRegex.exec(code)) !== null) {
+      if (match.index > lastIndex) {
+        result += escapeHtml(code.slice(lastIndex, match.index));
+      }
+      if (match[1]) {
+        result += `<span class="tok-comment">${escapeHtml(match[1])}</span>`;
+      } else if (match[2]) {
+        result += `<span class="tok-str">${escapeHtml(match[2])}</span>`;
+      } else if (match[3]) {
+        result += `<span class="tok-kw">${escapeHtml(match[3])}</span>`;
+      } else if (match[4]) {
+        result += `<span class="tok-type">${escapeHtml(match[4])}</span>`;
+      } else if (match[5]) {
+        result += `<span class="tok-num">${escapeHtml(match[5])}</span>`;
+      }
+      lastIndex = tokenRegex.lastIndex;
+    }
+
+    if (lastIndex < code.length) {
+      result += escapeHtml(code.slice(lastIndex));
+    }
+
+    return result;
+  }
+
+  function formatMarkdownText(rawText) {
+    if (!rawText) return '';
+
+    let escaped = escapeHtml(rawText);
+
+    // Inline links: [text](url)
+    escaped = escaped.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+    // Inline bold & italic
+    escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    escaped = escaped.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+    escaped = escaped.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    escaped = escaped.replace(/_([^_]+)_/g, '<em>$1</em>');
+
+    // Inline code `...`
+    escaped = escaped.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+
+    const lines = escaped.split('\n');
+    const output = [];
+    let i = 0;
+
+    while (i < lines.length) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      // Empty line
+      if (!trimmed) {
+        i++;
+        continue;
+      }
+
+      // Headings
+      if (/^####\s+(.*)$/.test(trimmed)) {
+        output.push(`<h4>${trimmed.replace(/^####\s+/, '')}</h4>`);
+        i++;
+        continue;
+      }
+      if (/^###\s+(.*)$/.test(trimmed)) {
+        output.push(`<h3>${trimmed.replace(/^###\s+/, '')}</h3>`);
+        i++;
+        continue;
+      }
+      if (/^##\s+(.*)$/.test(trimmed)) {
+        output.push(`<h2>${trimmed.replace(/^##\s+/, '')}</h2>`);
+        i++;
+        continue;
+      }
+      if (/^#\s+(.*)$/.test(trimmed)) {
+        output.push(`<h1>${trimmed.replace(/^#\s+/, '')}</h1>`);
+        i++;
+        continue;
+      }
+
+      // Horizontal Rule
+      if (/^(?:---|\*\*\*|___)\s*$/.test(trimmed)) {
+        output.push('<hr class="ai-divider">');
+        i++;
+        continue;
+      }
+
+      // Blockquote (> ...)
+      if (/^&gt;\s?(.*)$/.test(trimmed) || /^>\s?(.*)$/.test(trimmed)) {
+        const quoteLines = [];
+        while (i < lines.length && (/^&gt;\s?(.*)$/.test(lines[i].trim()) || /^>\s?(.*)$/.test(lines[i].trim()))) {
+          quoteLines.push(lines[i].trim().replace(/^(?:&gt;|>)\s?/, ''));
+          i++;
+        }
+        output.push(`<blockquote>${quoteLines.join('<br>')}</blockquote>`);
+        continue;
+      }
+
+      // Markdown Tables (| Header | Header | \n | --- | --- |)
+      if (trimmed.startsWith('|') && trimmed.endsWith('|') && i + 1 < lines.length && /^\|[-:\s|]+\|$/.test(lines[i + 1].trim())) {
+        const headerCells = trimmed.slice(1, -1).split('|').map(c => c.trim());
+        i += 2; // skip header and separator
+        const rowHtmls = [];
+        while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
+          const cells = lines[i].trim().slice(1, -1).split('|').map(c => c.trim());
+          const tdHtml = cells.map(c => `<td>${c}</td>`).join('');
+          rowHtmls.push(`<tr>${tdHtml}</tr>`);
+          i++;
+        }
+        const thHtml = headerCells.map(c => `<th>${c}</th>`).join('');
+        output.push(`
+          <div class="ai-table-wrapper">
+            <table class="ai-table">
+              <thead><tr>${thHtml}</tr></thead>
+              <tbody>${rowHtmls.join('')}</tbody>
+            </table>
+          </div>
+        `);
+        continue;
+      }
+
+      // Unordered List (- item, * item, + item)
+      if (/^[-*+]\s+(.*)$/.test(trimmed)) {
+        const items = [];
+        while (i < lines.length && /^[-*+]\s+(.*)$/.test(lines[i].trim())) {
+          items.push(`<li>${lines[i].trim().replace(/^[-*+]\s+/, '')}</li>`);
+          i++;
+        }
+        output.push(`<ul>${items.join('')}</ul>`);
+        continue;
+      }
+
+      // Ordered List (1. item, 2. item)
+      if (/^\d+\.\s+(.*)$/.test(trimmed)) {
+        const items = [];
+        while (i < lines.length && /^\d+\.\s+(.*)$/.test(lines[i].trim())) {
+          items.push(`<li>${lines[i].trim().replace(/^\d+\.\s+/, '')}</li>`);
+          i++;
+        }
+        output.push(`<ol>${items.join('')}</ol>`);
+        continue;
+      }
+
+      // Regular Paragraph: safely consume lines until a block tag or blank line
+      const paraLines = [];
+      const startI = i;
+      while (
+        i < lines.length &&
+        lines[i].trim() &&
+        !/^#{1,4}\s+/.test(lines[i].trim()) &&
+        !/^[-*+]\s+/.test(lines[i].trim()) &&
+        !/^\d+\.\s+/.test(lines[i].trim()) &&
+        !/^(?:&gt;|>)\s?/.test(lines[i].trim()) &&
+        !/^(?:---|\*\*\*|___)\s*$/.test(lines[i].trim()) &&
+        !(lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|') && i + 1 < lines.length && /^\|[-:\s|]+\|$/.test(lines[i + 1].trim()))
+      ) {
+        paraLines.push(lines[i].trim());
+        i++;
+      }
+
+      if (paraLines.length > 0) {
+        output.push(`<p>${paraLines.join('<br>')}</p>`);
+      } else if (i === startI) {
+        // Guaranteed fallback: always advance i
+        output.push(`<p>${trimmed}</p>`);
+        i++;
+      }
+    }
+
+    return output.join('');
   }
 
   function renderFormattedResponse(raw) {
@@ -760,6 +1113,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const code = match[2];
       parts.push({ type: 'code', lang: lang || 'CODE', code: code });
       lastIndex = match.index + match[0].length;
+      if (match[0].length === 0) {
+        codeBlockRegex.lastIndex++;
+      }
     }
 
     if (lastIndex < raw.length) {
@@ -786,43 +1142,71 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
         `;
       } else {
-        let text = escapeHtml(part.content);
-
-        // Headings
-        text = text.replace(/^### (.*$)/gim, '<h3>$1</h3>');
-        text = text.replace(/^## (.*$)/gim, '<h2>$1</h2>');
-        text = text.replace(/^# (.*$)/gim, '<h1>$1</h1>');
-
-        // Bold & Italic
-        text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-        text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
-
-        // Inline code `...`
-        text = text.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
-
-        // Bullet lists
-        text = text.replace(/^\s*[-*]\s+(.*)$/gim, '<li>$1</li>');
-        text = text.replace(/(<li>.*<\/li>(\n|$)好?)+/g, '<ul>$&</ul>');
-
-        // Numbered lists
-        text = text.replace(/^\s*(\d+)\.\s+(.*)$/gim, '<li>$2</li>');
-
-        // Paragraphs
-        const paras = text.split(/\n{2,}/);
-        const formattedParas = paras.map(p => {
-          const trimmed = p.trim();
-          if (!trimmed) return '';
-          if (trimmed.startsWith('<h') || trimmed.startsWith('<ul') || trimmed.startsWith('<ol') || trimmed.startsWith('<div')) {
-            return trimmed;
-          }
-          return `<p>${trimmed.replace(/\n/g, '<br>')}</p>`;
-        });
-
-        outputHtml += formattedParas.join('');
+        outputHtml += formatMarkdownText(part.content);
       }
     }
 
     return outputHtml;
+  }
+
+  function buildTurnContentHtml(turn, isLast) {
+    let contentHtml = '';
+
+    if (turn.isImage) {
+      if (turn.imageUrl) {
+        contentHtml = `
+          <div class="ai-generated-image-card">
+            <div class="ai-img-profile-badge" title="AI Assistant">
+              <video src="profile2.png" autoplay muted loop playsinline class="ai-profile-video" oncanplay="this.style.display='block';" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';"></video>
+              <div class="ai-profile-fallback" style="display:none;"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+            </div>
+            <div class="ai-img-frame">
+              <img src="${turn.imageUrl}" alt="AI Generated Image" class="ai-rendered-image" />
+              <a href="${turn.imageUrl}" download="flux_${Date.now()}.png" class="ai-img-download-btn" aria-label="Download Image" title="Download Image">
+                <i class="fa-solid fa-download"></i>
+              </a>
+            </div>
+          </div>
+        `;
+      } else if (isLast && isGenerating) {
+        contentHtml = `<span style="color: rgba(255, 255, 255, 0.45); font-style: italic;">Thinking...</span>`;
+      } else {
+        contentHtml = turn.answer && turn.answer.startsWith('<') ? turn.answer : renderFormattedResponse(turn.answer || '<div style="color:#f87171;">Image generation stopped.</div>');
+      }
+    } else if (turn.isVideo) {
+      if (turn.videoUrl) {
+        const downloadExt = 'mp4';
+        const mediaTagHtml = `
+          <video src="${turn.videoUrl}" type="video/mp4" autoplay loop muted controls playsinline preload="auto" class="ai-rendered-image ai-rendered-video"></video>
+        `;
+
+        contentHtml = `
+          <div class="ai-generated-image-card ai-generated-video-card">
+            <div class="ai-img-profile-badge" title="AI Assistant">
+              <video src="profile2.png" autoplay muted loop playsinline class="ai-profile-video" oncanplay="this.style.display='block';" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';"></video>
+              <div class="ai-profile-fallback" style="display:none;"><i class="fa-solid fa-clapperboard"></i></div>
+            </div>
+            <div class="ai-img-frame ai-video-frame">
+              ${mediaTagHtml}
+              <a href="${turn.videoUrl}" download="wan2_${Date.now()}.${downloadExt}" class="ai-img-download-btn" aria-label="Download MP4 Video" title="Download MP4 Video">
+                <i class="fa-solid fa-download"></i>
+              </a>
+            </div>
+          </div>
+        `;
+      } else if (isLast && isGenerating) {
+        contentHtml = `<span style="color: rgba(255, 255, 255, 0.45); font-style: italic;">Thinking...</span>`;
+      } else {
+        contentHtml = turn.answer && turn.answer.startsWith('<') ? turn.answer : renderFormattedResponse(turn.answer || '<div style="color:#f87171;">Video generation stopped.</div>');
+      }
+    } else {
+      if (!turn.answer && isLast && isGenerating) {
+        contentHtml = `<span style="color: rgba(255, 255, 255, 0.45); font-style: italic;">Thinking...</span>`;
+      } else {
+        contentHtml = renderFormattedResponse(turn.answer || '');
+      }
+    }
+    return contentHtml;
   }
 
   function renderConversationHistory() {
@@ -833,64 +1217,17 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    let fullHtml = '';
     conversationTurns.forEach((turn, idx) => {
       const isLast = idx === conversationTurns.length - 1;
       const turnId = `chat-turn-${idx}`;
-      let contentHtml = '';
+      let turnEl = document.getElementById(turnId);
 
-      if (turn.isImage) {
-        if (turn.imageUrl) {
-          contentHtml = `
-            <div class="ai-generated-image-card">
-              <div class="ai-img-profile-badge" title="AI Assistant">
-                <video src="profile2.png" autoplay muted loop playsinline class="ai-profile-video" oncanplay="this.style.display='block';" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';"></video>
-                <div class="ai-profile-fallback" style="display:none;"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
-              </div>
-              <div class="ai-img-frame">
-                <img src="${turn.imageUrl}" alt="AI Generated Image" class="ai-rendered-image" />
-                <a href="${turn.imageUrl}" download="flux_${Date.now()}.png" class="ai-img-download-btn" aria-label="Download Image" title="Download Image">
-                  <i class="fa-solid fa-download"></i>
-                </a>
-              </div>
-            </div>
-          `;
-        } else if (isLast && isGenerating) {
-          contentHtml = `<span style="color: rgba(255, 255, 255, 0.45); font-style: italic;">Thinking...</span>`;
-        } else {
-          contentHtml = turn.answer && turn.answer.startsWith('<') ? turn.answer : renderFormattedResponse(turn.answer || '<div style="color:#f87171;">Image generation stopped.</div>');
-        }
-      } else if (turn.isVideo) {
-        if (turn.videoUrl) {
-          contentHtml = `
-            <div class="ai-generated-image-card ai-generated-video-card">
-              <div class="ai-img-profile-badge" title="AI Assistant">
-                <video src="profile2.png" autoplay muted loop playsinline class="ai-profile-video" oncanplay="this.style.display='block';" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';"></video>
-                <div class="ai-profile-fallback" style="display:none;"><i class="fa-solid fa-clapperboard"></i></div>
-              </div>
-              <div class="ai-img-frame ai-video-frame">
-                <video src="${turn.videoUrl}" autoplay loop muted controls playsinline class="ai-rendered-image ai-rendered-video"></video>
-                <a href="${turn.videoUrl}" download="wan2_${Date.now()}.webm" class="ai-img-download-btn" aria-label="Download Video" title="Download Video">
-                  <i class="fa-solid fa-download"></i>
-                </a>
-              </div>
-            </div>
-          `;
-        } else if (isLast && isGenerating) {
-          contentHtml = `<span style="color: rgba(255, 255, 255, 0.45); font-style: italic;">Thinking...</span>`;
-        } else {
-          contentHtml = turn.answer && turn.answer.startsWith('<') ? turn.answer : renderFormattedResponse(turn.answer || '<div style="color:#f87171;">Video generation stopped.</div>');
-        }
-      } else {
-        if (!turn.answer && isLast && isGenerating) {
-          contentHtml = `<span style="color: rgba(255, 255, 255, 0.45); font-style: italic;">Thinking...</span>`;
-        } else {
-          contentHtml = renderFormattedResponse(turn.answer || '');
-        }
-      }
-
-      fullHtml += `
-        <div class="chat-turn-entry" id="${turnId}">
+      if (!turnEl) {
+        // Create new turn entry without destroying previously rendered turns
+        turnEl = document.createElement('div');
+        turnEl.className = 'chat-turn-entry';
+        turnEl.id = turnId;
+        turnEl.innerHTML = `
           <div class="turn-prompt-row">
             <div class="turn-prompt-badge">
               <span class="turn-prompt-text">${escapeHtml(turn.prompt)}</span>
@@ -903,13 +1240,28 @@ document.addEventListener('DOMContentLoaded', () => {
             <i class="fa-regular fa-copy"></i>
           </button>
           <div class="turn-answer-body">
-            ${contentHtml}
+            ${buildTurnContentHtml(turn, isLast)}
           </div>
-        </div>
-      `;
+        `;
+        aiResponseText.appendChild(turnEl);
+      } else {
+        // Turn already exists: Only update the active/last turn so earlier turns' media never resets or blacks out
+        if (isLast) {
+          const bodyEl = turnEl.querySelector('.turn-answer-body');
+          if (bodyEl) {
+            bodyEl.innerHTML = buildTurnContentHtml(turn, isLast);
+          }
+        }
+      }
     });
 
-    aiResponseText.innerHTML = fullHtml;
+    // Remove any extra turn entries if turns count decreased
+    const existingTurnEls = aiResponseText.querySelectorAll('.chat-turn-entry');
+    existingTurnEls.forEach((el, index) => {
+      if (index >= conversationTurns.length) {
+        el.remove();
+      }
+    });
 
     // Render Side Tracker (floating rectangular glass buttons on the left corner matching reference image)
     if (historySideTracker) {
@@ -1239,45 +1591,71 @@ document.addEventListener('DOMContentLoaded', () => {
       fetch(`${BACKEND_URL}/api/stop-image`, { method: 'POST' }).catch(() => {});
       fetch(`${BACKEND_URL}/api/stop-video`, { method: 'POST' }).catch(() => {});
 
-      const targetModel = await getTargetModel(activeModelKey);
       let response;
 
-      try {
-        // Direct stream from local Ollama (0ms proxy latency, instant real-time tokens)
-        response = await fetch('http://127.0.0.1:11434/api/generate', {
+      // Check if user is in Online Cloud Mode (Groq / OpenRouter / Gemini with auto silent fallback)
+      if (currentExecutionMode === 'online') {
+        const hasAnyKey = Boolean(apiKeys.groq || apiKeys.openrouter || apiKeys.gemini);
+        if (!hasAnyKey) {
+          if (onlineKeysModal) onlineKeysModal.style.display = 'flex';
+          throw new Error('Please add an online API key (Groq, OpenRouter, or Gemini) to use Online Mode.');
+        }
+
+        response = await fetch(`${BACKEND_URL}/api/chat-online`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: targetModel,
             prompt: routedPrompt,
-            stream: true
+            groq_key: apiKeys.groq || '',
+            openrouter_key: apiKeys.openrouter || '',
+            gemini_key: apiKeys.gemini || '',
+            // Legacy single fields preserved for backwards compatibility
+            provider: apiKeys.groq ? 'groq' : (apiKeys.openrouter ? 'openrouter' : 'gemini'),
+            api_key: apiKeys.groq || apiKeys.openrouter || apiKeys.gemini || ''
           }),
           signal: activeAbortController.signal
         });
+      } else {
+        // Offline Local Mode (Ollama Qwen Coder)
+        const targetModel = await getTargetModel(activeModelKey);
 
-        // If direct Ollama responded with error (e.g. 404 tag not found or 500), fallback to Flask backend
-        if (!response.ok) {
-          console.warn(`Direct Ollama returned ${response.status}, routing via Python backend...`);
-          response = await fetch(`${BACKEND_URL}/api/chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: routedPrompt, model: targetModel, stream: true }),
-            signal: activeAbortController.signal
-          });
-        }
-      } catch (ollamaErr) {
-        if (ollamaErr.name === 'AbortError') throw ollamaErr;
-        // Fallback to Flask backend on port 5000
         try {
-          response = await fetch(`${BACKEND_URL}/api/chat`, {
+          // Direct stream from local Ollama (0ms proxy latency, instant real-time tokens)
+          response = await fetch('http://127.0.0.1:11434/api/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: routedPrompt, model: targetModel, stream: true }),
+            body: JSON.stringify({
+              model: targetModel,
+              prompt: routedPrompt,
+              stream: true
+            }),
             signal: activeAbortController.signal
           });
-        } catch (flaskErr) {
-          if (flaskErr.name === 'AbortError') throw flaskErr;
-          throw new Error('Could not connect to Ollama (port 11434) or Python backend (port 5000). Please ensure Ollama is running in CMD!');
+
+          // If direct Ollama responded with error (e.g. 404 tag not found or 500), fallback to Flask backend
+          if (!response.ok) {
+            console.warn(`Direct Ollama returned ${response.status}, routing via Python backend...`);
+            response = await fetch(`${BACKEND_URL}/api/chat`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ prompt: routedPrompt, model: targetModel, stream: true }),
+              signal: activeAbortController.signal
+            });
+          }
+        } catch (ollamaErr) {
+          if (ollamaErr.name === 'AbortError') throw ollamaErr;
+          // Fallback to Flask backend on port 5000
+          try {
+            response = await fetch(`${BACKEND_URL}/api/chat`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ prompt: routedPrompt, model: targetModel, stream: true }),
+              signal: activeAbortController.signal
+            });
+          } catch (flaskErr) {
+            if (flaskErr.name === 'AbortError') throw flaskErr;
+            throw new Error('Could not connect to Ollama (port 11434) or Python backend (port 5000). Please ensure Ollama is running in CMD!');
+          }
         }
       }
 
@@ -1305,8 +1683,10 @@ document.addEventListener('DOMContentLoaded', () => {
           let errorMessage = null;
 
           if (line.startsWith('data: ')) {
+            const jsonPart = line.slice(6).trim();
+            if (jsonPart === '[DONE]') continue;
             try {
-              const data = JSON.parse(line.slice(6));
+              const data = JSON.parse(jsonPart);
               if (data.error) errorMessage = data.error;
               else if (typeof data.token === 'string') tokenText = data.token;
             } catch (_) {}
@@ -1315,6 +1695,7 @@ document.addEventListener('DOMContentLoaded', () => {
               const data = JSON.parse(line);
               if (data.error) errorMessage = data.error;
               else if (typeof data.response === 'string') tokenText = data.response;
+              else if (typeof data.token === 'string') tokenText = data.token;
             } catch (_) {}
           }
 
@@ -1549,8 +1930,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Detect upward scrolling in AI answer card & handle 3D circular scroll-to-bottom button
   if (aiResponseScroll) {
+    const isChatScrollable = () => {
+      return document.body.classList.contains('chat-active') &&
+             aiResponseBox &&
+             !aiResponseBox.hasAttribute('hidden') &&
+             conversationTurns.length > 0;
+    };
+
     // 1. Mouse wheel detection: immediate response to upward wheel motion
     aiResponseScroll.addEventListener('wheel', (e) => {
+      if (!isChatScrollable()) {
+        userScrolledUp = false;
+        if (aiScrollBottomBtn) aiScrollBottomBtn.classList.remove('is-visible');
+        return;
+      }
       if (e.deltaY < 0) {
         // User scrolled upward
         userScrolledUp = true;
@@ -1572,6 +1965,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }, { passive: true });
 
     aiResponseScroll.addEventListener('touchmove', (e) => {
+      if (!isChatScrollable()) {
+        userScrolledUp = false;
+        if (aiScrollBottomBtn) aiScrollBottomBtn.classList.remove('is-visible');
+        return;
+      }
       const diff = e.touches[0].clientY - touchY;
       if (diff > 5) {
         // Swiping down to scroll up
@@ -1582,6 +1980,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 3. Native scroll listener to track scroll position reliably
     aiResponseScroll.addEventListener('scroll', () => {
+      if (!isChatScrollable()) {
+        userScrolledUp = false;
+        if (aiScrollBottomBtn) aiScrollBottomBtn.classList.remove('is-visible');
+        return;
+      }
       const distanceFromBottom = aiResponseScroll.scrollHeight - aiResponseScroll.clientHeight - aiResponseScroll.scrollTop;
 
       if (distanceFromBottom > 15) {
@@ -1727,7 +2130,9 @@ document.addEventListener('DOMContentLoaded', () => {
           prompt: 'Autonomous multi-agent execution pipeline',
           answer: 'Detailed system architecture for an autonomous multi-agent pipeline with asynchronous message routing, task decomposition, and execution state isolation.',
           isImage: false,
-          imageUrl: null
+          imageUrl: null,
+          isVideo: false,
+          videoUrl: null
         }
       ]
     },
@@ -1740,7 +2145,9 @@ document.addEventListener('DOMContentLoaded', () => {
           prompt: 'Self-evolving neural architecture reasoning',
           answer: 'Comprehensive analysis on dynamic model distillation, reinforcement learning from architectural feedback, and meta-learning optimizations.',
           isImage: false,
-          imageUrl: null
+          imageUrl: null,
+          isVideo: false,
+          videoUrl: null
         }
       ]
     },
@@ -1753,7 +2160,9 @@ document.addEventListener('DOMContentLoaded', () => {
           prompt: 'Real-time production inference benchmark',
           answer: 'High-throughput latency benchmarks across GPU clusters measuring time-to-first-token (TTFT) and token generation velocity.',
           isImage: false,
-          imageUrl: null
+          imageUrl: null,
+          isVideo: false,
+          videoUrl: null
         }
       ]
     }
@@ -1834,7 +2243,9 @@ document.addEventListener('DOMContentLoaded', () => {
           prompt: session.title || 'Conversation',
           answer: '',
           isImage: false,
-          imageUrl: null
+          imageUrl: null,
+          isVideo: false,
+          videoUrl: null
         }];
 
     currentSessionId = session.id || ('chat_' + Date.now());
@@ -1843,6 +2254,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.add('chat-active');
     if (heroSection) heroSection.classList.add('chat-active');
     if (aiResponseBox) aiResponseBox.removeAttribute('hidden');
+    if (aiResponseText) aiResponseText.innerHTML = '';
 
     renderConversationHistory();
 
@@ -1941,8 +2353,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (heroSection) heroSection.classList.remove('chat-active');
       if (aiResponseBox) aiResponseBox.setAttribute('hidden', '');
       if (aiResponseText) aiResponseText.innerHTML = '';
+      if (aiResponseScroll) {
+        aiResponseScroll.scrollTop = 0;
+      }
       userScrolledUp = false;
-      if (aiScrollBottomBtn) aiScrollBottomBtn.classList.remove('is-visible');
+      if (aiScrollBottomBtn) {
+        aiScrollBottomBtn.classList.remove('is-visible');
+      }
       conversationTurns = [];
       currentSessionId = null;
       if (historySideTracker) historySideTracker.innerHTML = '';
@@ -1993,6 +2410,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (heroSection) heroSection.classList.remove('chat-active');
     if (aiResponseBox) aiResponseBox.setAttribute('hidden', '');
     if (aiResponseText) aiResponseText.innerHTML = '';
+    if (aiResponseScroll) {
+      aiResponseScroll.scrollTop = 0;
+    }
+    userScrolledUp = false;
+    if (aiScrollBottomBtn) {
+      aiScrollBottomBtn.classList.remove('is-visible');
+    }
     if (historySideTracker) historySideTracker.innerHTML = '';
     setButtonState('send');
     renderAttachments();
