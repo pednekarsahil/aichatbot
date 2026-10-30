@@ -84,6 +84,7 @@ desktop.ini
 *~
 *.sublime-workspace
 *.sublime-project
+assets/2104970-standard v2-6x.png
 
 # ---- Logs & env ----
 *.log
@@ -95,3 +96,6 @@ logs/
 # ---- Local config ----
 config.local.*
 *.local.json
+
+
+
