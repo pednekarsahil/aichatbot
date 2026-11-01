@@ -1131,7 +1131,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else if (isLast && isGenerating) {
         contentHtml = `<span style="color: rgba(255, 255, 255, 0.45); font-style: italic;">Thinking...</span>`;
       } else {
-        contentHtml = turn.answer && turn.answer.startsWith('<') ? turn.answer : renderFormattedResponse(turn.answer || '<div style="color:#f87171;">Image generation stopped.</div>');
+        contentHtml = turn.answer ? (turn.answer.startsWith('<') ? turn.answer : renderFormattedResponse(turn.answer)) : '<div style="color:#f87171;">Image generation stopped.</div>';
       }
     } else if (turn.isVideo) {
       if (turn.videoUrl) {
@@ -1157,13 +1157,13 @@ document.addEventListener('DOMContentLoaded', () => {
       } else if (isLast && isGenerating) {
         contentHtml = `<span style="color: rgba(255, 255, 255, 0.45); font-style: italic;">Thinking...</span>`;
       } else {
-        contentHtml = turn.answer && turn.answer.startsWith('<') ? turn.answer : renderFormattedResponse(turn.answer || '<div style="color:#f87171;">Video generation stopped.</div>');
+        contentHtml = turn.answer ? (turn.answer.startsWith('<') ? turn.answer : renderFormattedResponse(turn.answer)) : '<div style="color:#f87171;">Video generation stopped.</div>';
       }
     } else {
       if (!turn.answer && isLast && isGenerating) {
         contentHtml = `<span style="color: rgba(255, 255, 255, 0.45); font-style: italic;">Thinking...</span>`;
       } else {
-        contentHtml = renderFormattedResponse(turn.answer || '');
+        contentHtml = (turn.answer && turn.answer.startsWith('<')) ? turn.answer : renderFormattedResponse(turn.answer || '');
       }
     }
     return contentHtml;
@@ -1302,7 +1302,69 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  let stopHoldTimer = null;
+  let didHoldStop = false;
+
+  function cancelStopHold() {
+    if (stopHoldTimer) {
+      clearTimeout(stopHoldTimer);
+      stopHoldTimer = null;
+    }
+  }
+
+  function handleCompleteStop() {
+    cancelStopHold();
+    if (activeAbortController) {
+      activeAbortController.abort();
+      activeAbortController = null;
+    }
+    // Also notify ComfyUI to immediately stop generation and free memory
+    fetch(`${BACKEND_URL}/api/stop-image`, { method: 'POST' }).catch(() => {});
+    fetch(`${BACKEND_URL}/api/stop-video`, { method: 'POST' }).catch(() => {});
+
+    isGenerating = false;
+    isStoppedMidway = false;
+    document.body.classList.remove('is-generating');
+    setButtonState('send');
+
+    if (conversationTurns.length > 0) {
+      const lastTurn = conversationTurns[conversationTurns.length - 1];
+      if (lastTurn.isVideo) {
+        if (!lastTurn.videoUrl) {
+          lastTurn.answer = '<div style="color:#f87171;">Video generation stopped.</div>';
+        }
+      } else if (lastTurn.isImage) {
+        if (!lastTurn.imageUrl) {
+          lastTurn.answer = '<div style="color:#f87171;">Image generation stopped.</div>';
+        }
+      } else {
+        // Offline or Online text generation
+        if (currentRawResponse) {
+          lastTurn.answer = currentRawResponse;
+        } else if (!lastTurn.answer) {
+          lastTurn.answer = '<div style="color:#f87171;">Generation stopped.</div>';
+        }
+      }
+      renderConversationHistory();
+      saveCurrentSession();
+    }
+  }
+
+  function startStopHold(e) {
+    if (!isGenerating && !isStoppedMidway) return;
+    if (e.button !== undefined && e.button !== 0) return;
+    didHoldStop = false;
+    cancelStopHold();
+    stopHoldTimer = setTimeout(() => {
+      if (isGenerating || isStoppedMidway) {
+        didHoldStop = true;
+        handleCompleteStop();
+      }
+    }, 2000);
+  }
+
   function handleStopClick() {
+    cancelStopHold();
     if (activeAbortController) {
       activeAbortController.abort();
       activeAbortController = null;
@@ -1318,6 +1380,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function handleNaturalCompletion() {
+    cancelStopHold();
     isGenerating = false;
     isStoppedMidway = false;
     document.body.classList.remove('is-generating');
@@ -1468,7 +1531,17 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       } catch (fluxErr) {
         if (fluxErr.name === 'AbortError') {
-          // Stopped by user
+          if (!isStoppedMidway) {
+            handleNaturalCompletion();
+            if (conversationTurns.length > 0) {
+              const lastTurn = conversationTurns[conversationTurns.length - 1];
+              if (!lastTurn.imageUrl) {
+                lastTurn.answer = '<div style="color:#f87171;">Image generation stopped.</div>';
+              }
+              renderConversationHistory();
+              saveCurrentSession();
+            }
+          }
           return;
         }
         handleNaturalCompletion();
@@ -1520,7 +1593,17 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       } catch (wanErr) {
         if (wanErr.name === 'AbortError') {
-          // Stopped by user
+          if (!isStoppedMidway) {
+            handleNaturalCompletion();
+            if (conversationTurns.length > 0) {
+              const lastTurn = conversationTurns[conversationTurns.length - 1];
+              if (!lastTurn.videoUrl) {
+                lastTurn.answer = '<div style="color:#f87171;">Video generation stopped.</div>';
+              }
+              renderConversationHistory();
+              saveCurrentSession();
+            }
+          }
           return;
         }
         handleNaturalCompletion();
@@ -1706,8 +1789,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     } catch (err) {
       if (err.name === 'AbortError') {
-        // User deliberately stopped midway
-        // Half data is preserved and displayed; button is in 'Continue' state
+        if (!isStoppedMidway) {
+          handleNaturalCompletion();
+          if (conversationTurns.length > 0) {
+            const lastTurn = conversationTurns[conversationTurns.length - 1];
+            if (currentRawResponse) {
+              lastTurn.answer = currentRawResponse;
+            } else if (!lastTurn.answer) {
+              lastTurn.answer = '<div style="color:#f87171;">Generation stopped.</div>';
+            }
+            renderConversationHistory();
+            saveCurrentSession();
+          }
+        }
       } else {
         if (aiResponseText) {
           aiResponseText.innerHTML = `<div style="color:#f87171;">Connection error: ${escapeHtml(err.message)}</div>`;
@@ -1718,7 +1812,22 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (promptActionBtn) {
-    promptActionBtn.addEventListener('click', () => {
+    promptActionBtn.addEventListener('pointerdown', startStopHold);
+    promptActionBtn.addEventListener('pointerup', cancelStopHold);
+    promptActionBtn.addEventListener('pointercancel', cancelStopHold);
+    promptActionBtn.addEventListener('pointerleave', cancelStopHold);
+    promptActionBtn.addEventListener('contextmenu', (e) => {
+      if (isGenerating || isStoppedMidway) e.preventDefault();
+    });
+
+    promptActionBtn.addEventListener('click', (e) => {
+      if (didHoldStop) {
+        didHoldStop = false;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
       if (isGenerating) {
         // Stop current generation midway -> turns to Continue button
         handleStopClick();
