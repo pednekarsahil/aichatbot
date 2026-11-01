@@ -428,7 +428,7 @@
         <p>Select how you want to run models on this system.</p>
       </div>
 
-      <div class="mode-modal-cards-row">
+      <div class="mode-modal-cards-row" id="mode-cards-row">
         <!-- Online Card -->
         <button type="button" class="mode-choice-card" id="choose-online-mode-btn">
         
@@ -452,6 +452,15 @@
             <i class="fa-solid fa-arrow-right"></i>
           </div>
         </button>
+      </div>
+
+      <!-- Running is in progress below the online cloud mode and offline local mode (no card) -->
+      <div class="running-progress-inline" id="running-progress-card" style="display: none;">
+        <div class="running-progress-spinner"></div>
+        <div class="running-progress-text-group">
+          <span class="running-progress-text" id="offline-status-title">Running is in progress</span>
+          <span class="running-progress-sub" id="offline-status-sub">Running Ollama and ComfyUI...</span>
+        </div>
       </div>
     </div>
   </div>

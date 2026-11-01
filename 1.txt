@@ -1,0 +1,15 @@
+Fully offline multi-modal AI chatbot - text, image & video generation, all local. 🔥
+
+Built with Flask + Ollama + ComfyUI + vanilla JS.
+
+The best part? Smart memory management. Switch from Qwen to FLUX to Wan2.2, and it automatically unloads every model not in use - freeing VRAM/RAM so only the active model consumes resources. Zero wasted GPU memory.
+
+• Text generation → Qwen3-Coder (streamed tokens)
+• Image generation → FLUX.1 Schnell fp8
+• Video generation → Wan2.2-TI2V-5B
+• Auto intent router picks the model from your prompt
+• file attachments, chat history, glass 3D UI
+
+No cloud, no API keys, no token costs. Everything runs on my machine.
+
+#LocalLLM #Ollama #ComfyUI #Flask #GenerativeAI #Python #AI

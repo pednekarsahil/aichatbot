@@ -258,6 +258,10 @@ def chat():
     # Free ComfyUI image model so GPU/VRAM/CPU is dedicated to text generation
     free_comfyui_memory()
 
+    # Automatically check if Ollama or ComfyUI were turned off and turn them back on
+    ensure_ollama_alive()
+    ensure_comfyui_alive()
+
     data = request.get_json(silent=True) or {}
     prompt = data.get("prompt", "").strip()
     requested_model = data.get("model", "")
@@ -339,6 +343,249 @@ def chat():
             return jsonify({
                 "error": f"Failed to connect to Ollama: {str(e)}. Make sure Ollama is running."
             }), 502
+
+
+def find_ollama_executable():
+    """Locate Ollama executable on the system."""
+    which_path = shutil.which("ollama") or shutil.which("ollama.exe")
+    if which_path and os.path.exists(which_path):
+        return which_path
+
+    user_appdata = os.environ.get("LOCALAPPDATA", os.path.expanduser(r"~\AppData\Local"))
+    candidates = [
+        os.path.join(user_appdata, "Programs", "Ollama", "ollama app.exe"),
+        os.path.join(user_appdata, "Programs", "Ollama", "ollama.exe"),
+        r"C:\Program Files\Ollama\ollama app.exe",
+        r"C:\Program Files\Ollama\ollama.exe",
+        r"C:\Program Files (x86)\Ollama\ollama app.exe",
+        r"C:\Program Files (x86)\Ollama\ollama.exe",
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return None
+
+
+def find_comfyui_executable():
+    """Locate ComfyUI Desktop or portable executable on the system."""
+    candidates = [
+        r"D:\softwares\Comfy Desktop\Comfy Desktop.exe",
+        os.path.expanduser(r"~\AppData\Local\Programs\ComfyUI\ComfyUI.exe"),
+        os.path.expanduser(r"~\AppData\Local\Programs\ComfyUI\resources\app\bin\ComfyUI.exe"),
+        os.path.expanduser(r"~\AppData\Local\Programs\Comfy Desktop\Comfy Desktop.exe"),
+        r"C:\Program Files\ComfyUI\ComfyUI.exe",
+        r"C:\Program Files\Comfy Desktop\Comfy Desktop.exe",
+        r"D:\ComfyUI_windows_portable\run_nvidia_gpu.bat",
+        r"D:\ComfyUI_windows_portable\run_cpu.bat",
+        r"C:\ComfyUI_windows_portable\run_nvidia_gpu.bat",
+        r"C:\ComfyUI_windows_portable\run_cpu.bat"
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+
+    which_comfy = shutil.which("ComfyUI") or shutil.which("comfy")
+    if which_comfy and os.path.exists(which_comfy):
+        return which_comfy
+
+    return None
+
+
+def find_ollama_app():
+    """Locate Ollama app.exe (GUI tray executable) on the system."""
+    ollama_exe = find_ollama_executable()
+    if ollama_exe:
+        local_app = os.path.join(os.path.dirname(ollama_exe), "ollama app.exe")
+        if os.path.exists(local_app):
+            return local_app
+
+    user_appdata = os.environ.get("LOCALAPPDATA", os.path.expanduser(r"~\AppData\Local"))
+    candidates = [
+        os.path.join(user_appdata, "Programs", "Ollama", "ollama app.exe"),
+        r"C:\Program Files\Ollama\ollama app.exe",
+        r"C:\Program Files (x86)\Ollama\ollama app.exe",
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return None
+
+
+def start_ollama_process():
+    """Reliably start Ollama on Windows using both tray application and background server."""
+    ollama_path = find_ollama_executable()
+    if not ollama_path:
+        return False
+
+    ollama_dir = os.path.dirname(ollama_path) if os.path.exists(ollama_path) else None
+    ollama_app = find_ollama_app()
+
+    # 1. Start Ollama Windows Desktop App via os.startfile
+    if ollama_app and os.path.exists(ollama_app) and os.name == 'nt' and hasattr(os, 'startfile'):
+        try:
+            os.startfile(ollama_app)
+            print(f"[Offline] Successfully started Ollama app: {ollama_app}")
+        except Exception as e:
+            print(f"[Offline] os.startfile failed: {e}")
+
+    # 2. Also start via cmd.exe start as an independent process
+    if os.name == 'nt':
+        try:
+            if ollama_app and os.path.exists(ollama_app):
+                subprocess.Popen(f'start "" "{ollama_app}"', shell=True, cwd=ollama_dir)
+            elif ollama_path and os.path.exists(ollama_path):
+                subprocess.Popen(f'start /B "" "{ollama_path}" serve', shell=True, cwd=ollama_dir)
+        except Exception:
+            pass
+
+    # 3. Direct background daemon with working directory
+    try:
+        flags = 0x08000000 if os.name == 'nt' else 0  # CREATE_NO_WINDOW
+        subprocess.Popen(
+            [ollama_path, "serve"],
+            cwd=ollama_dir,
+            creationflags=flags
+        )
+        print(f"[Offline] Spawned background 'ollama serve' in {ollama_dir}")
+    except Exception as e:
+        print(f"[Offline] subprocess serve error: {e}")
+
+    return True
+
+
+def start_comfyui_process():
+    """Reliably start ComfyUI Desktop or portable script."""
+    comfy_path = find_comfyui_executable()
+    if not comfy_path or not os.path.exists(comfy_path):
+        return False
+
+    comfy_dir = os.path.dirname(comfy_path) if os.path.isdir(os.path.dirname(comfy_path)) else None
+
+    if os.name == 'nt' and hasattr(os, 'startfile'):
+        try:
+            os.startfile(comfy_path)
+            print(f"[Offline] Successfully started ComfyUI: {comfy_path}")
+            return True
+        except Exception as e:
+            print(f"[Offline] os.startfile on ComfyUI failed: {e}")
+
+    try:
+        subprocess.Popen([comfy_path], cwd=comfy_dir)
+        return True
+    except Exception:
+        pass
+    return False
+
+
+def ensure_comfyui_alive():
+    """Ensure ComfyUI process is running if it was accidentally stopped."""
+    comfy_alive = False
+    try:
+        req = urllib.request.Request(f"{COMFYUI_BASE_URL}/system_stats")
+        with urllib.request.urlopen(req, timeout=0.6) as resp:
+            comfy_alive = resp.status == 200
+    except Exception:
+        comfy_alive = False
+
+    if not comfy_alive:
+        start_comfyui_process()
+        for _ in range(12):
+            time.sleep(0.8)
+            try:
+                req = urllib.request.Request(f"{COMFYUI_BASE_URL}/system_stats")
+                with urllib.request.urlopen(req, timeout=0.6) as resp:
+                    if resp.status == 200:
+                        comfy_alive = True
+                        break
+            except Exception:
+                pass
+    return comfy_alive
+
+
+def ensure_ollama_alive():
+    """Ensure Ollama process is running if it was accidentally stopped."""
+    ollama_alive = False
+    try:
+        req = urllib.request.Request(f"{OLLAMA_BASE_URL}/api/tags")
+        with urllib.request.urlopen(req, timeout=0.6) as resp:
+            ollama_alive = resp.status == 200
+    except Exception:
+        ollama_alive = False
+
+    if not ollama_alive:
+        start_ollama_process()
+        for _ in range(12):
+            time.sleep(0.8)
+            try:
+                req = urllib.request.Request(f"{OLLAMA_BASE_URL}/api/tags")
+                with urllib.request.urlopen(req, timeout=0.6) as resp:
+                    if resp.status == 200:
+                        ollama_alive = True
+                        break
+            except Exception:
+                pass
+    return ollama_alive
+
+
+@app.route("/api/models/check-and-run-offline", methods=["GET", "POST"])
+def check_and_run_offline():
+    """
+    Check if required offline software (Ollama and ComfyUI) are installed.
+    If installed, automatically launch any that are not currently running.
+    """
+    ollama_path = find_ollama_executable()
+    comfy_path = find_comfyui_executable()
+
+    ollama_installed = bool(ollama_path)
+    comfy_installed = bool(comfy_path)
+
+    # If neither software is installed
+    if not (ollama_installed or comfy_installed):
+        return jsonify({
+            "status": "not_installed",
+            "installed": False,
+            "ollama_installed": False,
+            "comfy_installed": False,
+            "message": "Offline models not detected"
+        })
+
+    # Check if Ollama is currently running
+    ollama_running = False
+    try:
+        req = urllib.request.Request(f"{OLLAMA_BASE_URL}/api/tags")
+        with urllib.request.urlopen(req, timeout=0.8) as res:
+            ollama_running = res.status == 200
+    except Exception:
+        ollama_running = False
+
+    # Check if ComfyUI is currently running
+    comfy_running = False
+    try:
+        req = urllib.request.Request(f"{COMFYUI_BASE_URL}/system_stats")
+        with urllib.request.urlopen(req, timeout=0.8) as res:
+            comfy_running = res.status == 200
+    except Exception:
+        comfy_running = False
+
+    launched_ollama = False
+    if ollama_installed and not ollama_running:
+        launched_ollama = start_ollama_process()
+
+    launched_comfy = False
+    if comfy_installed and not comfy_running:
+        launched_comfy = start_comfyui_process()
+
+    return jsonify({
+        "status": "running",
+        "installed": True,
+        "ollama_installed": ollama_installed,
+        "comfy_installed": comfy_installed,
+        "ollama_running": ollama_running,
+        "comfy_running": comfy_running,
+        "launched_ollama": launched_ollama,
+        "launched_comfy": launched_comfy,
+        "message": "Running is in progress..."
+    })
 
 
 @app.route("/api/models/check-offline", methods=["GET"])
@@ -612,6 +859,7 @@ def generate_image():
     """
     # Unload all Ollama text/code models so image model runs with full GPU/CPU/RAM
     unload_all_ollama_models()
+    ensure_comfyui_alive()
 
     data = request.get_json(silent=True) or {}
     prompt_text = data.get("prompt", "").strip()
@@ -896,6 +1144,7 @@ def generate_video():
 
     # 2. Free any previous models from ComfyUI memory
     free_comfyui_memory()
+    ensure_comfyui_alive()
 
     data = request.get_json(silent=True) or {}
     prompt_text = data.get("prompt", "").strip()

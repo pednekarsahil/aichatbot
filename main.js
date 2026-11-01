@@ -1,101 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
   // ---------------------------------------------------------------------------
-  // 1. Mobile Menu Handling (<=720px)
-  // ---------------------------------------------------------------------------
-  const burgerBtn = document.getElementById('burger-btn');
-  const mobileSheet = document.getElementById('mobile-sheet');
-  const mobileOverlay = document.getElementById('mobile-overlay');
-  const mobileLinks = document.querySelectorAll('.mobile-link, .mobile-signin');
-  const desktopLinks = document.querySelectorAll('.nav-link');
-
-  function openMenu() {
-    document.body.classList.add('menu-open');
-    burgerBtn.setAttribute('aria-expanded', 'true');
-    mobileOverlay.removeAttribute('hidden');
-    mobileSheet.removeAttribute('hidden');
-  }
-
-  function closeMenu() {
-    document.body.classList.remove('menu-open');
-    burgerBtn.setAttribute('aria-expanded', 'false');
-    mobileOverlay.setAttribute('hidden', '');
-    mobileSheet.setAttribute('hidden', '');
-  }
-
-  function toggleMenu() {
-    const isOpen = document.body.classList.contains('menu-open');
-    if (isOpen) {
-      closeMenu();
-    } else {
-      openMenu();
-    }
-  }
-
-  if (burgerBtn) {
-    burgerBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleMenu();
-    });
-  }
-
-  if (mobileOverlay) {
-    mobileOverlay.addEventListener('click', () => {
-      closeMenu();
-    });
-  }
-
-  // Close on Escape key
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && document.body.classList.contains('menu-open')) {
-      closeMenu();
-    }
-  });
-
-  // Close on link click & update active states
-  mobileLinks.forEach((link) => {
-    link.addEventListener('click', () => {
-      if (link.classList.contains('mobile-link')) {
-        document.querySelectorAll('.mobile-link').forEach((l) => l.classList.remove('active'));
-        link.classList.add('active');
-
-        // Sync with desktop nav
-        const href = link.getAttribute('href');
-        desktopLinks.forEach((dl) => {
-          if (dl.getAttribute('href') === href) {
-            desktopLinks.forEach((d) => d.classList.remove('active'));
-            dl.classList.add('active');
-          }
-        });
-      }
-      closeMenu();
-    });
-  });
-
-  desktopLinks.forEach((link) => {
-    link.addEventListener('click', () => {
-      desktopLinks.forEach((l) => l.classList.remove('active'));
-      link.classList.add('active');
-
-      // Sync with mobile nav
-      const href = link.getAttribute('href');
-      document.querySelectorAll('.mobile-link').forEach((ml) => {
-        if (ml.getAttribute('href') === href) {
-          document.querySelectorAll('.mobile-link').forEach((m) => m.classList.remove('active'));
-          ml.classList.add('active');
-        }
-      });
-    });
-  });
-
-  // Close menu on resize > 720px
-  window.addEventListener('resize', () => {
-    if (window.innerWidth > 720 && document.body.classList.contains('menu-open')) {
-      closeMenu();
-    }
-  });
-
-  // ---------------------------------------------------------------------------
-  // 2. Stats Count-Up Animation
+  // 1. Stats Count-Up Animation
   // ---------------------------------------------------------------------------
   const statItems = document.querySelectorAll('.stat-item');
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -198,6 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ---------------------------------------------------------------------------
   // 4. Prompt Card & AI Backend Integration (Qwen Coder)
   // ---------------------------------------------------------------------------
+  const BACKEND_URL = 'http://127.0.0.1:5000';
   const promptInput = document.getElementById('prompt-input');
   const promptActionBtn = document.getElementById('prompt-action-btn');
   const promptScrollTrack = document.getElementById('prompt-scrollbar-track');
@@ -516,7 +422,6 @@ document.addEventListener('DOMContentLoaded', () => {
   let userScrolledUp = false;
   let currentRawResponse = '';
   let cachedModelName = null;
-  const BACKEND_URL = 'http://127.0.0.1:5000';
   const historySideTracker = document.getElementById('history-side-tracker');
 
   // Execution Mode State: 'offline' (default) or 'online'
@@ -583,22 +488,95 @@ document.addEventListener('DOMContentLoaded', () => {
     return false;
   }
 
-  // Show welcome modal on page load instantly in milliseconds
-  window.addEventListener('DOMContentLoaded', () => {
-    // Fill in any previously saved keys
-    if (groqApiKeyInput) groqApiKeyInput.value = apiKeys.groq;
-    if (openrouterApiKeyInput) openrouterApiKeyInput.value = apiKeys.openrouter;
-    if (geminiApiKeyInput) geminiApiKeyInput.value = apiKeys.gemini;
+  function setRunningProgress(visible, text = 'Running is in progress', sub = 'Running Ollama and ComfyUI...') {
+    const progressEl = document.getElementById('running-progress-card');
+    const statusTitle = document.getElementById('offline-status-title');
+    const statusSub = document.getElementById('offline-status-sub');
 
-    const hasPrompted = sessionStorage.getItem('chatbotai_mode_prompted');
-    if (!hasPrompted) {
-      setTimeout(() => {
-        if (modeWelcomeModal) modeWelcomeModal.style.display = 'flex';
-      }, 50); // Milliseconds instant reveal
+    if (visible) {
+      if (progressEl) progressEl.style.display = 'flex';
+      if (statusTitle && text) statusTitle.textContent = text;
+      if (statusSub && sub) statusSub.textContent = sub;
     } else {
-      updateModeUI(currentExecutionMode);
+      if (progressEl) progressEl.style.display = 'none';
     }
-  });
+  }
+
+  // Handle Offline Local Mode Selection, Software Detection, and Auto-Run
+  async function handleOfflineModeSelection() {
+    setRunningProgress(true, 'Running is in progress');
+
+    try {
+      // 1. Check whether the software is installed and run if installed
+      const res = await fetch(`${BACKEND_URL}/api/models/check-and-run-offline`, {
+        method: 'POST'
+      });
+
+      if (!res.ok) {
+        throw new Error('Check and run request failed');
+      }
+
+      const data = await res.json();
+
+      // If software is NOT installed in the system
+      if (!data.installed || data.status === 'not_installed') {
+        setRunningProgress(false);
+        if (modeWelcomeModal) modeWelcomeModal.style.display = 'none';
+        if (offlineAlertModal) offlineAlertModal.style.display = 'flex';
+        return;
+      }
+
+      // If software IS installed, keep showing running in progress
+      setRunningProgress(true, 'Running is in progress');
+
+      // 2. Poll until software is ready or timeout (up to 30 seconds)
+      let isReady = false;
+      const maxAttempts = 20; // 20 * 1.5s = 30s
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        try {
+          const checkRes = await fetch(`${BACKEND_URL}/api/models/check-offline`);
+          if (checkRes.ok) {
+            const checkData = await checkRes.json();
+            if (checkData.ollama_ready && checkData.comfy_ready) {
+              isReady = true;
+              break;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (isReady) {
+        setRunningProgress(true, 'Running is in progress', 'Ollama and ComfyUI are ready!');
+        setTimeout(() => {
+          setRunningProgress(false);
+          if (modeWelcomeModal) modeWelcomeModal.style.display = 'none';
+          updateModeUI('offline');
+        }, 800);
+      } else {
+        // If timed out and models not detected
+        setRunningProgress(false);
+        if (modeWelcomeModal) modeWelcomeModal.style.display = 'none';
+        if (offlineAlertModal) offlineAlertModal.style.display = 'flex';
+      }
+    } catch (err) {
+      console.error('Error during offline check/run:', err);
+      setRunningProgress(false);
+      if (modeWelcomeModal) modeWelcomeModal.style.display = 'none';
+      if (offlineAlertModal) offlineAlertModal.style.display = 'flex';
+    }
+  }
+
+  // Show welcome modal on page load so user chooses mode every time they open the website
+  if (groqApiKeyInput) groqApiKeyInput.value = apiKeys.groq;
+  if (openrouterApiKeyInput) openrouterApiKeyInput.value = apiKeys.openrouter;
+  if (geminiApiKeyInput) geminiApiKeyInput.value = apiKeys.gemini;
+
+  setRunningProgress(false);
+
+  setTimeout(() => {
+    if (modeWelcomeModal) modeWelcomeModal.style.display = 'flex';
+  }, 50); // Milliseconds instant reveal
 
   // Welcome Modal: Online Choice -> Open Keys Config
   if (chooseOnlineModeBtn) {
@@ -608,18 +586,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Welcome Modal: Offline Choice -> Verify silently
+  // Welcome Modal: Offline Choice -> Check software and run if installed
   if (chooseOfflineModeBtn) {
     chooseOfflineModeBtn.addEventListener('click', async () => {
-      if (modeWelcomeModal) modeWelcomeModal.style.display = 'none';
-      sessionStorage.setItem('chatbotai_mode_prompted', 'true');
-
-      const isReady = await verifyOfflineSetupSilently();
-      if (isReady) {
-        updateModeUI('offline');
-      } else {
-        if (offlineAlertModal) offlineAlertModal.style.display = 'flex';
-      }
+      await handleOfflineModeSelection();
     });
   }
 
@@ -627,7 +597,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (closeKeysModalBtn) {
     closeKeysModalBtn.addEventListener('click', () => {
       if (onlineKeysModal) onlineKeysModal.style.display = 'none';
-      sessionStorage.setItem('chatbotai_mode_prompted', 'true');
     });
   }
 
@@ -651,7 +620,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (openrouterKey) localStorage.setItem('chatbotai_openrouter_key', openrouterKey);
       if (geminiKey) localStorage.setItem('chatbotai_gemini_key', geminiKey);
 
-      sessionStorage.setItem('chatbotai_mode_prompted', 'true');
       if (onlineKeysModal) onlineKeysModal.style.display = 'none';
       updateModeUI('online');
     });
@@ -668,13 +636,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Offline Alert: Retry
   if (alertRetryOfflineBtn) {
     alertRetryOfflineBtn.addEventListener('click', async () => {
-      const isReady = await verifyOfflineSetupSilently();
-      if (isReady) {
-        if (offlineAlertModal) offlineAlertModal.style.display = 'none';
-        updateModeUI('offline');
-      } else {
-        alert('Offline models still not detected on localhost:11434 or localhost:8188. Please follow README.md instructions!');
-      }
+      if (offlineAlertModal) offlineAlertModal.style.display = 'none';
+      if (modeWelcomeModal) modeWelcomeModal.style.display = 'flex';
+      await handleOfflineModeSelection();
     });
   }
 
@@ -691,13 +655,9 @@ document.addEventListener('DOMContentLoaded', () => {
           if (onlineKeysModal) onlineKeysModal.style.display = 'flex';
         }
       } else {
-        // Switch to Offline mode: verify Ollama and ComfyUI silently
-        const isReady = await verifyOfflineSetupSilently();
-        if (isReady) {
-          updateModeUI('offline');
-        } else {
-          if (offlineAlertModal) offlineAlertModal.style.display = 'flex';
-        }
+        // Switch to Offline mode: check and run if installed
+        if (modeWelcomeModal) modeWelcomeModal.style.display = 'flex';
+        await handleOfflineModeSelection();
       }
     });
   }
@@ -1157,7 +1117,7 @@ document.addEventListener('DOMContentLoaded', () => {
         contentHtml = `
           <div class="ai-generated-image-card">
             <div class="ai-img-profile-badge" title="AI Assistant">
-              <video src="profile2.png" autoplay muted loop playsinline class="ai-profile-video" oncanplay="this.style.display='block';" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';"></video>
+              <img src="assets/ai-avatar.svg" alt="AI" class="turn-ai-avatar-img" />
               <div class="ai-profile-fallback" style="display:none;"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
             </div>
             <div class="ai-img-frame">
@@ -1183,7 +1143,7 @@ document.addEventListener('DOMContentLoaded', () => {
         contentHtml = `
           <div class="ai-generated-image-card ai-generated-video-card">
             <div class="ai-img-profile-badge" title="AI Assistant">
-              <video src="profile2.png" autoplay muted loop playsinline class="ai-profile-video" oncanplay="this.style.display='block';" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';"></video>
+              <img src="assets/ai-avatar.svg" alt="AI" class="turn-ai-avatar-img" />
               <div class="ai-profile-fallback" style="display:none;"><i class="fa-solid fa-clapperboard"></i></div>
             </div>
             <div class="ai-img-frame ai-video-frame">
@@ -1233,14 +1193,20 @@ document.addEventListener('DOMContentLoaded', () => {
               <span class="turn-prompt-text">${escapeHtml(turn.prompt)}</span>
             </div>
             <div class="turn-user-profile-circle" title="User Profile">
-              <img src="assets/profile.png" onerror="if(!this.tried){this.tried=true;this.src='profile.pmg';}else if(this.tried===true){this.tried='done';this.src='profile.png';}" alt="User" class="turn-user-avatar" />
+              <img src="assets/profile.png" onerror="if(!this.tried){this.tried=true;this.src='profile.png';}" alt="User" class="turn-user-avatar" />
             </div>
           </div>
           <button type="button" class="turn-prompt-copy-btn" title="Copy prompt" aria-label="Copy prompt">
             <i class="fa-regular fa-copy"></i>
           </button>
-          <div class="turn-answer-body">
-            ${buildTurnContentHtml(turn, isLast)}
+          <div class="turn-answer-row">
+            <div class="turn-ai-profile-circle" title="AI Assistant">
+              <img src="assets/ai-avatar.svg" alt="AI Assistant" class="turn-ai-avatar-img" onerror="if(!this.tried){this.tried=true;this.src='assets/logo.webp';}else if(this.nextElementSibling){this.style.display='none';this.nextElementSibling.style.display='flex';}" />
+              <div class="turn-ai-avatar-fallback" style="display: none;"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+            </div>
+            <div class="turn-answer-body">
+              ${buildTurnContentHtml(turn, isLast)}
+            </div>
           </div>
         `;
         aiResponseText.appendChild(turnEl);
