@@ -1109,7 +1109,50 @@ document.addEventListener('DOMContentLoaded', () => {
     return outputHtml;
   }
 
-  function buildTurnContentHtml(turn, isLast) {
+  const AI_AVATAR_SVG_HTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100%" height="100%" style="display:block;border-radius:50%;">
+    <defs>
+      <radialGradient id="aiAvatarBg" cx="35%" cy="25%" r="75%">
+        <stop offset="0%" stop-color="#2a2e3d"/>
+        <stop offset="50%" stop-color="#12151f"/>
+        <stop offset="100%" stop-color="#07080d"/>
+      </radialGradient>
+      <linearGradient id="aiAvatarBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9"/>
+        <stop offset="40%" stop-color="#38bdf8" stop-opacity="0.8"/>
+        <stop offset="80%" stop-color="#818cf8" stop-opacity="0.7"/>
+        <stop offset="100%" stop-color="#c084fc" stop-opacity="0.5"/>
+      </linearGradient>
+      <linearGradient id="aiAvatarCore" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#ffffff"/>
+        <stop offset="35%" stop-color="#67e8f9"/>
+        <stop offset="70%" stop-color="#3b82f6"/>
+        <stop offset="100%" stop-color="#8b5cf6"/>
+      </linearGradient>
+      <filter id="aiAvatarGlow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="2.5" result="blur"/>
+        <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+      </filter>
+    </defs>
+    <circle cx="50" cy="50" r="48" fill="url(#aiAvatarBg)" stroke="url(#aiAvatarBorder)" stroke-width="2.5"/>
+    <circle cx="50" cy="50" r="39" fill="none" stroke="rgba(255, 255, 255, 0.15)" stroke-width="1.2" stroke-dasharray="4 2"/>
+    <g filter="url(#aiAvatarGlow)">
+      <path d="M 50 24 L 68 50 L 50 76 L 32 50 Z" fill="url(#aiAvatarCore)" opacity="0.95"/>
+      <path d="M 50 32 L 62 50 L 50 68 L 38 50 Z" fill="#ffffff" opacity="0.95"/>
+      <circle cx="50" cy="50" r="4.5" fill="#ffffff"/>
+      <circle cx="50" cy="18" r="2.8" fill="#67e8f9"/>
+      <circle cx="50" cy="82" r="2.8" fill="#818cf8"/>
+      <circle cx="18" cy="50" r="2.8" fill="#38bdf8"/>
+      <circle cx="82" cy="50" r="2.8" fill="#c084fc"/>
+      <line x1="50" y1="18" x2="50" y2="24" stroke="#67e8f9" stroke-width="1.8" stroke-linecap="round"/>
+      <line x1="50" y1="76" x2="50" y2="82" stroke="#818cf8" stroke-width="1.8" stroke-linecap="round"/>
+      <line x1="18" y1="50" x2="32" y2="50" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round"/>
+      <line x1="68" y1="50" x2="82" y2="50" stroke="#c084fc" stroke-width="1.8" stroke-linecap="round"/>
+    </g>
+    <path d="M 18 34 C 26 20, 74 20, 82 34 C 68 28, 32 28, 18 34 Z" fill="#ffffff" opacity="0.25"/>
+  </svg>`; /*
+  }
+
+*/ function buildTurnContentHtml(turn, isLast) {
     let contentHtml = '';
 
     if (turn.isImage) {
@@ -1117,7 +1160,7 @@ document.addEventListener('DOMContentLoaded', () => {
         contentHtml = `
           <div class="ai-generated-image-card">
             <div class="ai-img-profile-badge" title="AI Assistant">
-              <img src="assets/ai-avatar.svg" alt="AI" class="turn-ai-avatar-img" />
+              ${AI_AVATAR_SVG_HTML}
               <div class="ai-profile-fallback" style="display:none;"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
             </div>
             <div class="ai-img-frame">
@@ -1143,7 +1186,7 @@ document.addEventListener('DOMContentLoaded', () => {
         contentHtml = `
           <div class="ai-generated-image-card ai-generated-video-card">
             <div class="ai-img-profile-badge" title="AI Assistant">
-              <img src="assets/ai-avatar.svg" alt="AI" class="turn-ai-avatar-img" />
+              ${AI_AVATAR_SVG_HTML}
               <div class="ai-profile-fallback" style="display:none;"><i class="fa-solid fa-clapperboard"></i></div>
             </div>
             <div class="ai-img-frame ai-video-frame">
@@ -1201,8 +1244,8 @@ document.addEventListener('DOMContentLoaded', () => {
           </button>
           <div class="turn-answer-row">
             <div class="turn-ai-profile-circle" title="AI Assistant">
-              <img src="assets/ai-avatar.svg" alt="AI Assistant" class="turn-ai-avatar-img" onerror="if(!this.tried){this.tried=true;this.src='assets/logo.webp';}else if(this.nextElementSibling){this.style.display='none';this.nextElementSibling.style.display='flex';}" />
-              <div class="turn-ai-avatar-fallback" style="display: none;"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+              ${AI_AVATAR_SVG_HTML}
+
             </div>
             <div class="turn-answer-body">
               ${buildTurnContentHtml(turn, isLast)}

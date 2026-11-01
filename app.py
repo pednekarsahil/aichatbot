@@ -8,8 +8,11 @@ import shutil
 import urllib.request
 import urllib.error
 import urllib.parse
+import mimetypes
 from flask import Flask, request, jsonify, Response, stream_with_context, send_file
 from flask_cors import CORS
+
+mimetypes.add_type("image/svg+xml", ".svg")
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)

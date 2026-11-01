@@ -2183,10 +2183,7 @@ body:not(.chat-active) .ai-scroll-bottom-btn,
   background: #000000;
   backdrop-filter: blur(14px) saturate(180%);
   -webkit-backdrop-filter: blur(14px) saturate(180%);
-  box-shadow:
-    0 4px 14px rgba(0, 0, 0, 0.45),
-    inset 0 1px 1.5px rgba(255, 255, 255, 0.7),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.35);
+   
   user-select: none;
   flex-shrink: 0;
   margin-top: 4px;
@@ -2275,20 +2272,20 @@ body:not(.chat-active) .ai-scroll-bottom-btn,
 /* Prompt Row: Prompt Badge + User Profile outside on Right Side Corner */
 .turn-prompt-row {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: flex-end;
   gap: 10px;
   align-self: flex-end;
   margin-left: auto;
   margin-right: 0;
-  max-width: 100%;
+  max-width:  90%;
 }
 
 .turn-prompt-badge {
   display: inline-flex;
   align-items: center;
-  padding: 8px 18px;
-  border-radius: 8px 18px 8px  18px;
+  padding: 8px 16px;
+  border-radius: 8px 18px 8px 18px;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.08) 100%);
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-top: 1.5px solid rgba(255, 255, 255, 0.65);
@@ -2389,16 +2386,13 @@ body:not(.chat-active) .ai-scroll-bottom-btn,
   height: 32px;
   border-radius: 50%;
   overflow: hidden;
-  display: inline-flex;
+  display: inline-flex !important;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   border: 1.5px solid rgba(255, 255, 255, 0.45);
   border-top: 1.8px solid rgba(255, 255, 255, 0.9);
-  box-shadow:
-    0 4px 14px rgba(0, 0, 0, 0.55),
-    0 0 12px rgba(56, 189, 248, 0.25),
-    inset 0 1px 2px rgba(255, 255, 255, 0.7);
+  
   background: #090b10;
   margin-bottom: 2px;
   position: relative;
@@ -2406,9 +2400,13 @@ body:not(.chat-active) .ai-scroll-bottom-btn,
   transition: transform 0.25s ease;
 }
 
-.turn-ai-profile-circle:hover {
-  transform: scale(1.06);
+.turn-ai-profile-circle svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
+
+
 
 .turn-ai-avatar-img {
   width: 100%;
