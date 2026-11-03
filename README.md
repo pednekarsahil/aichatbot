@@ -35,7 +35,7 @@ Disclaimer: The offline Models Consumes More RAM and GPU So Make Sure Your Syste
    ```
 3. Start the application:
    ```bash
-   python app.py
+   python backend.py
    ```
 4. Open `http://localhost:5000` in your web browser.
 5. In the opening popup, select **Online Mode** and add your **Groq**, **OpenRouter**, or **Gemini** API key to chat instantly!
