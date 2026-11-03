@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Intelligence Designed To Evolve</title>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  />
+
+  <!-- OnlineWebFonts CDN: BubbledotICG-FinePos -->
+  <link
+    href="https://db.onlinewebfonts.com/c/8cb707a9b8a73f8a7403336b861c3074?family=BubbledotICG-FinePos"
+    rel="stylesheet"
+  />
+
+  <!-- Font Awesome 6.5.2 -->
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+    integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A=="
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer"
+  />
+
+  <link rel="stylesheet" href="desgin.css" />
+  <link rel="preload" as="image" href="assets/profile.png" />
+</head>
+<body>
+  <!-- Full-viewport cover media behind all UI -->
+  <div class="bg" id="bg-container" aria-hidden="true">
+    <video class="bg-video" id="bg-video" autoplay muted loop playsinline>
+      <source
+        id="bg-video-source"
+        src="./assets/loopvideo.mp4"
+        type="video/mp4"
+      />
+    </video>
+    <div class="bg-image" id="bg-image" style="display: none;"></div>
+  </div>
+
+  <!-- Slide Drawer & 3D Glass Slide Button -->
+  <div class="slide-drawer-overlay" id="drawer-overlay" hidden></div>
+  <aside class="slide-drawer" id="slide-drawer" aria-label="History and Settings Drawer">
+    <!-- 3D Realistic Circular Slide Button (Top-Left) -->
+    <button
+      id="sidebar-slide-btn"
+      class="slide-handle-btn"
+      type="button"
+      aria-label="Toggle history and background drawer"
+      aria-expanded="false"
+    >
+      <div class="handle-chevron-wrap">
+        <i class="fa-solid fa-chevron-right handle-chevron" id="handle-chevron"></i>
+      </div>
+    </button>
+
+    <div class="drawer-content">
+      <div class="drawer-header">
+        <div class="drawer-header-title">
+          
+        
+        </div>
+       
+      </div>
+
+      <!-- Navigation Tabs -->
+      <div class="drawer-tabs">
+        <button type="button" class="drawer-tab active" data-tab="history">
+          <i class="fa-solid fa-clock-rotate-left"></i>
+          <span>Chat History</span>
+        </button>
+        <button type="button" class="drawer-tab" data-tab="background">
+          <i class="fa-solid fa-photo-film"></i>
+          <span>Background</span>
+        </button>
+      </div>
+
+      <!-- Tab: History -->
+      <div class="drawer-panel active" id="panel-history">
+        <div class="panel-actions">
+          <button type="button" class="glass-action-btn" id="new-chat-btn">
+            <i class="fa-solid fa-plus"></i>
+            <span>New Chat</span>
+          </button>
+          <button type="button" class="glass-action-btn circular-btn" id="clear-history-btn" title="Clear all chats" aria-label="Clear all chats">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+        </div>
+
+        <div class="history-list" id="history-list">
+          <!-- Items populated dynamically -->
+        </div>
+
+        <!-- 3D Glass Clear All Confirmation Modal -->
+        <div class="glass-confirm-overlay" id="clear-confirm-modal" hidden>
+          <div class="glass-confirm-box">
+            
+            <div class="glass-confirm-title">Clear all chats?</div>
+            <div class="glass-confirm-desc">Are you sure to clear all the chats? It will delete all the chat history.</div>
+            <div class="glass-confirm-actions">
+              <button type="button" class="glass-confirm-btn cancel" id="clear-cancel-btn">Cancel</button>
+              <button type="button" class="glass-confirm-btn confirm" id="clear-yes-btn">Yes</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Background -->
+      <div class="drawer-panel" id="panel-background">
+        <div class="bg-section">
+          <h3><i class="fa-solid fa-video"></i> Live Video Background</h3>
+          <p class="section-desc">Upload your own video or enter a direct MP4/WebM URL.</p>
+
+          <div class="media-input-group">
+            <label class="media-file-label" for="bg-video-input">
+              <i class="fa-solid fa-file-video"></i>
+              <span>Upload Video File</span>
+            </label>
+            <input type="file" id="bg-video-input" accept="video/mp4,video/webm" hidden />
+          </div>
+
+          <div class="media-url-row">
+            <input
+              type="url"
+              class="media-url-input"
+              id="bg-video-url-input"
+              placeholder="Paste direct .mp4 URL..."
+            />
+            <button type="button" class="media-apply-btn" id="apply-video-url-btn">Apply</button>
+          </div>
+        </div>
+
+        <div class="bg-section">
+          <h3><i class="fa-solid fa-image"></i> Image Background</h3>
+          <p class="section-desc">Replace background with a custom wallpaper or photo.</p>
+
+          <div class="media-input-group">
+            <label class="media-file-label" for="bg-image-input">
+              <i class="fa-solid fa-file-image"></i>
+              <span>Upload Image File</span>
+            </label>
+            <input type="file" id="bg-image-input" accept="image/*" hidden />
+          </div>
+
+          <div class="media-url-row">
+            <input
+              type="url"
+              class="media-url-input"
+              id="bg-image-url-input"
+              placeholder="Paste image URL..."
+            />
+            <button type="button" class="media-apply-btn" id="apply-image-url-btn">Apply</button>
+          </div>
+        </div>
+
+        <div class="bg-section rollback-section">
+          <h3><i class="fa-solid fa-rotate-left"></i> Restore Original</h3>
+          <p class="section-desc">Roll back to the default original live video background.</p>
+          <button type="button" class="glass-action-btn rollback-btn" id="rollback-bg-btn">
+            <i class="fa-solid fa-arrow-rotate-left"></i>
+            <span>Roll Back</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Drawer Bottom: Switch to Online / Offline Mode Toggle Button -->
+      <div class="drawer-mode-switch-wrapper">
+        <button type="button" class="drawer-mode-toggle-btn" id="drawer-mode-toggle-btn" title="Toggle between Online Cloud & Offline Local Mode">
+          <i class="fa-solid fa-cloud" id="drawer-toggle-icon"></i>
+          <span id="drawer-toggle-text">Switch to Online</span>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Floating Rectangular Glass Buttons on Left Corner for Conversation Turns (Matches User Reference Image) -->
+  <nav class="history-side-tracker" id="history-side-tracker" aria-label="Conversation Turns"></nav>
+
+  <div class="page">
+    <!-- Hero (center) -->
+    <main class="hero">
+      <!-- Headline -->
+      <h1 class="headline anim">
+        <span class="headline-line" style="--line-d: 0.12s">Intelligence</span>
+        <span class="headline-line" style="--line-d: 0.3s">Brings Revolution</span>
+      </h1>
+
+      <!-- 3D Glass Prompt Card -->
+      <div class="prompt-card-wrapper">
+        <!-- AI Response Box (Above Prompt Card with Smooth 3D Glass Reveal) -->
+        <div class="ai-response-box" id="ai-response-box" hidden>
+          <div class="ai-response-top-bar">
+            <button type="button" class="ai-copy-btn" id="ai-copy-btn" title="Copy response" aria-label="Copy response">
+              <i class="fa-regular fa-copy"></i>
+              <span>Copy</span>
+            </button>
+          </div>
+          <div class="ai-response-scroll" id="ai-response-scroll">
+            <div class="ai-response-text" id="ai-response-text"></div>
+          </div>
+        </div>
+
+        <!-- 3D Realistic Circular Glass Scroll-to-Bottom Button (Centered between Answer Card and Input Card) -->
+        <div class="ai-scroll-btn-wrapper" id="ai-scroll-btn-wrapper">
+          <button type="button" class="ai-scroll-bottom-btn" id="ai-scroll-bottom-btn" aria-label="Scroll to bottom" title="Scroll to bottom">
+            <i class="fa-solid fa-chevron-down"></i>
+          </button>
+        </div>
+
+        <div class="prompt-card">
+          <div class="prompt-card-glow" aria-hidden="true"></div>
+          <div class="prompt-card-inner">
+            <!-- Top Input Row: Textarea + Translucent Glass Scrollbar -->
+            <div class="prompt-input-row">
+              <textarea
+                class="prompt-input"
+                id="prompt-input"
+                placeholder="Ask anything or enter your prompt..."
+                rows="1"
+              ></textarea>
+              <!-- Translucent glass scrollbar on the Right side of textarea -->
+              <div class="prompt-scrollbar-track" id="prompt-scrollbar-track" title="Scroll prompt">
+                <div class="prompt-scrollbar-thumb" id="prompt-scrollbar-thumb"></div>
+              </div>
+            </div>
+
+            <!-- Attachments Area (revealed when files are selected) -->
+            <div class="prompt-attachments-container" id="prompt-attachments-container" hidden></div>
+
+            <!-- Bottom Row: Circular Upload Button & Text Generation Model on LEFT, Send Button on RIGHT -->
+            <div class="prompt-card-bottom">
+              <div class="prompt-card-bottom-left">
+                <!-- 3D Realistic Circular Glass Upload File Button (on LEFT side of Text Generation Button) -->
+                <div class="prompt-upload-wrapper">
+                  <input
+                    type="file"
+                    id="prompt-file-input"
+                    class="prompt-file-input"
+                    style="display: none;"
+                    multiple
+                  />
+                  <button
+                    type="button"
+                    class="prompt-upload-btn"
+                    id="prompt-upload-btn"
+                    title="Upload File"
+                    aria-label="Upload file"
+                  >
+                    <i class="fa-solid fa-paperclip upload-icon"></i>
+                  </button>
+                </div>
+
+                <!-- Anchor for 3D Morphing Button -->
+                <div class="model-select-anchor">
+                <!-- 3D Realistic Glass Button that slides down and shows models inside itself -->
+                <div class="model-select-wrapper" id="model-select-wrapper">
+                  <div
+                    class="model-select-btn"
+                    id="model-select-btn"
+                    role="button"
+                    tabindex="0"
+                    aria-haspopup="listbox"
+                    aria-expanded="false"
+                    title="Select AI Model"
+                  >
+                    <div class="model-select-btn-content">
+                      <span class="model-select-icon" id="current-model-icon">
+                        <i class="fa-solid fa-code"></i>
+                      </span>
+                      <!-- The model label: disappears when open -->
+                      <span class="model-select-label" id="current-model-label">Text Generation</span>
+                      <!-- Replaces the text on top when open -->
+                      <span class="model-select-open-label">Select AI Model</span>
+                    </div>
+                    <i class="fa-solid fa-chevron-down model-select-arrow" id="model-select-arrow"></i>
+                  </div>
+
+                  <!-- Model List Revealed INSIDE That Button Only with 3D Glass Effect -->
+                  <div class="model-dropdown-menu" id="model-dropdown-menu" role="listbox" aria-label="Select AI Model">
+                    <!-- Auto Option (Smart Route) -->
+                  <div class="model-option" data-model="auto" role="option">
+                    <div class="model-option-icon auto-icon">
+                      <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    </div>
+                    <div class="model-option-details">
+                      <div class="model-option-title">Auto (Smart Route) </div>
+                      <div class="model-option-desc">Auto-selects optimal model from prompt</div>
+                    </div>
+                    <i class="fa-solid fa-check model-option-check"></i>
+                  </div>
+
+                  <!-- Text Generation Model (Default: Qwen3-Coder 480B Cloud) -->
+                  <div class="model-option active" data-model="text" role="option">
+                    <div class="model-option-icon text-icon">
+                      <i class="fa-solid fa-code"></i>
+                    </div>
+                    <div class="model-option-details">
+                      <div class="model-option-title">Text Generation Model </div>
+                      <div class="model-option-desc">Learn, Research And Create</div>
+                    </div>
+                    <i class="fa-solid fa-check model-option-check"></i>
+                  </div>
+
+
+              
+
+
+
+                  <!-- Image Generation Model (FLUX.1 Schnell fp8) -->
+                  <div class="model-option" data-model="image-gen" role="option">
+                    <div class="model-option-icon image-icon">
+                      <i class="fa-solid fa-palette"></i>
+                    </div>
+                    <div class="model-option-details">
+                      <div class="model-option-title">Image Generation Model</div>
+                      <div class="model-option-desc">Generates Quality Images</div>
+                    </div>
+                    <i class="fa-solid fa-check model-option-check"></i>
+                  </div>
+
+                  <!-- Video Generation Model -->
+                  <div class="model-option" data-model="video-gen" role="option">
+                    <div class="model-option-icon video-icon">
+                      <i class="fa-solid fa-clapperboard"></i>
+                    </div>
+                    <div class="model-option-details">
+                      <div class="model-option-title">Video Generation Model</div>
+                      <div class="model-option-desc">Generates Quality Videos</div>
+                    </div>
+                    <i class="fa-solid fa-check model-option-check"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right side: Send / Stop Button firmly on the right corner -->
+          <div class="prompt-card-actions">
+              <button
+                type="button"
+                class="prompt-btn"
+                id="prompt-action-btn"
+                aria-label="Send prompt"
+              >
+                <!-- Loading RGB laser perimeter border on Stop state -->
+                <span class="btn-rgb-border" aria-hidden="true"></span>
+                <span class="btn-icon send-icon">
+                  <i class="fa-solid fa-arrow-up"></i>
+                </span>
+                <span class="btn-icon stop-icon">
+                  <i class="fa-solid fa-square"></i>
+                </span>
+                <span class="btn-icon continue-icon">
+                  <i class="fa-solid fa-play"></i>
+                </span>
+                <span class="btn-label">Send</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+    <!-- Stats footer -->
+    <footer class="stats" aria-label="Platform Statistics">
+      <div
+        class="stat-item anim"
+        style="--d: 0.5s"
+        data-suffix="ms"
+      >
+        <span class="stat-icon" aria-hidden="true">&lt;</span>
+        <span class="stat-value">Response</span>
+        <span class="stat-label">On Time</span>
+      </div>
+
+      <div
+        class="stat-item anim"
+        style="--d: 0.58s"
+        data-target="99.99"
+        data-suffix="%"
+        data-decimals="2"
+      >
+        <span class="stat-icon" aria-hidden="true">%</span>
+        <span class="stat-value"><span class="stat-num">0.00</span><span class="stat-suffix">%</span></span>
+        <span class="stat-label">Accuracy</span>
+      </div>
+
+      <div
+        class="stat-item anim"
+        style="--d: 0.66s"
+        data-target="24"
+        data-suffix="/7"
+        data-decimals="0"
+      >
+        <span class="stat-icon" aria-hidden="true">*</span>
+        <span class="stat-value"><span class="stat-num">0</span><span class="stat-suffix">/7</span></span>
+        <span class="stat-label">Active</span>
+      </div>
+
+      <div
+        class="stat-item anim"
+        style="--d: 0.74s"
+        data-target="2.4"
+        data-suffix="M"
+        data-decimals="1"
+      >
+        <span class="stat-icon" aria-hidden="true">#</span>
+        <span class="stat-value"><span class="stat-suffix">Unlimited</span></span>
+        <span class="stat-label">Tokens</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- 3D Glass Mode Selection & API Key Configuration Modals -->
+  <!-- 1. Welcome Glass Modal (Online or Offline Choice) -->
+  <div class="mode-modal-backdrop" id="mode-welcome-modal" style="display: none;">
+    <div class="mode-modal-glass">
+      <div class="mode-modal-header">
+       
+        <h2>Choose Execution Mode</h2>
+        <p>Select how you want to run models on this system.</p>
+      </div>
+
+      <div class="mode-modal-cards-row" id="mode-cards-row">
+        <!-- Online Card -->
+        <button type="button" class="mode-choice-card" id="choose-online-mode-btn">
+        
+          <h3>Online Cloud Mode</h3>
+          
+          <p>Instant inference via Cloud APIs (Groq, OpenRouter, Google Gemini). Zero local GPU/RAM requirement.</p>
+          <b>Note:</b>
+          <p>Online mode only generates Text</p>
+          <div class="mode-card-cta">
+            <span>Configure &amp; Use</span>
+            <i class="fa-solid fa-arrow-right"></i>
+          </div>
+        </button>
+
+        <!-- Offline Card -->
+        <button type="button" class="mode-choice-card" id="choose-offline-mode-btn">
+          <h3>Offline Local Mode</h3>
+          <p>Local privacy-first inference powered by Ollama (Qwen) &amp; ComfyUI (FLUX.1 Schnell + Wan2.2 Video).</p>
+          <div class="mode-card-cta">
+            <span>Run Locally</span>
+            <i class="fa-solid fa-arrow-right"></i>
+          </div>
+        </button>
+      </div>
+
+      <!-- Running is in progress below the online cloud mode and offline local mode (no card) -->
+      <div class="running-progress-inline" id="running-progress-card" style="display: none;">
+        <div class="running-progress-spinner"></div>
+        <div class="running-progress-text-group">
+          <span class="running-progress-text" id="offline-status-title">Running is in progress</span>
+          <span class="running-progress-sub" id="offline-status-sub">Running Ollama and ComfyUI...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Online API Keys Configuration Modal -->
+  <div class="mode-modal-backdrop" id="online-keys-modal" style="display: none;">
+    <div class="mode-modal-glass keys-modal-glass">
+      <button type="button" class="mode-modal-close-btn" id="close-keys-modal-btn" aria-label="Close">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+
+      <div class="mode-modal-header">
+      
+        <h2>Connect Cloud API Keys</h2>
+        <p>Enter your API key(s). Keys are securely used for this session.</p>
+      </div>
+
+      <div class="api-keys-form">
+        <!-- Groq API Key -->
+        <div class="api-key-group">
+          <label for="groq-api-key-input">
+          
+            <span>Groq API Key (Ultra-fast Llama &amp; Qwen)</span>
+          </label>
+          <input
+            type="password"
+            id="groq-api-key-input"
+            class="api-key-input"
+            placeholder="gsk_..."
+            autocomplete="off"
+          />
+        </div>
+
+        <!-- OpenRouter API Key -->
+        <div class="api-key-group">
+          <label for="openrouter-api-key-input">
+           
+            <span>OpenRouter API Key (Qwen, Claude, Mistral)</span>
+          </label>
+          <input
+            type="password"
+            id="openrouter-api-key-input"
+            class="api-key-input"
+            placeholder="sk-or-v1-..."
+            autocomplete="off"
+          />
+        </div>
+
+        <!-- Gemini API Key -->
+        <div class="api-key-group">
+          <label for="gemini-api-key-input">
+            
+            <span>Google Gemini API Key (Multimodal Vision &amp; Text)</span>
+          </label>
+          <input
+            type="password"
+            id="gemini-api-key-input"
+            class="api-key-input"
+            placeholder="AIzaSy..."
+            autocomplete="off"
+          />
+        </div>
+
+        <p class="api-keys-note">
+          <i class="fa-solid fa-circle-info"></i>
+          At least one API key is required. Groq is free and recommended for instant testing.
+        </p>
+
+        <div class="api-keys-actions">
+          <button type="button" class="api-key-save-btn" id="save-api-keys-btn">
+            <i class="fa-solid fa-plus"></i>
+            <span>Add &amp; Enable Online Mode</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Offline Setup Alert Modal (when offline models are not found) -->
+  <div class="mode-modal-backdrop" id="offline-alert-modal" style="display: none;">
+    <div class="mode-modal-glass alert-modal-glass">
+      <div class="mode-modal-header">
+      
+        <h2>Offline Models Not Detected</h2>
+        <p class="alert-desc">
+          Offline models are not there. Please download them and make the connection setup.
+        </p>
+      </div>
+
+      <div class="offline-guide-box">
+        <p>To make the connection setup, read the <a href="/readme" target="_blank" rel="noopener noreferrer" class="readme-link" title="Open README.md in new tab"><strong>README.md</strong> <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 11px; margin-left: 3px;"></i></a> which is inside the project directory.</p>
+        <div class="guide-steps">
+          <div class="guide-step-item">
+            <i class="fa-solid fa-check"></i>
+            <span>1. Start Ollama with Qwen Coder model (Port 11434)</span>
+          </div>
+          <div class="guide-step-item">
+            <i class="fa-solid fa-check"></i>
+            <span>2. Start ComfyUI Desktop for Flux and Wan 2.2 (Port 8188)</span>
+          </div>
+          <div class="guide-step-item">
+            <i class="fa-solid fa-check"></i>
+            <span>3. Verify model safetensors in respective folders</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="alert-actions">
+        <button type="button" class="alert-btn secondary-btn" id="alert-use-online-btn">
+          <i class="fa-solid fa-cloud"></i>
+          <span>Use Online Mode Instead</span>
+        </button>
+        <button type="button" class="alert-btn primary-btn" id="alert-retry-offline-btn">
+          <i class="fa-solid fa-rotate"></i>
+          <span>I Have Set It Up (Retry)</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="main.js"></script>
+</body>
+</html>
