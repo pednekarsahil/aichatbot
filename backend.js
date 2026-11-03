@@ -2349,7 +2349,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (history.length > 30) history.pop();
     }
 
-    saveHistory(history);
+    saveHistory(history); try { fetch(`${BACKEND_URL}/api/history/save`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sessionObj) }).catch(() => {}); } catch (_) {}
     renderHistory();
   }
 
@@ -2442,7 +2442,7 @@ document.addEventListener('DOMContentLoaded', () => {
         deleteBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           history.splice(index, 1);
-          saveHistory(history);
+          saveHistory(history); try { fetch(`${BACKEND_URL}/api/history/${session.id}`, { method: 'DELETE' }).catch(() => {}); } catch (_) {}
           if (currentSessionId === session.id) {
             if (newChatBtn) newChatBtn.click();
           } else {
@@ -2512,7 +2512,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function executeClearAllHistory() {
-    saveHistory([]);
+    saveHistory([]); try { fetch(`${BACKEND_URL}/api/history/clear`, { method: 'POST' }).catch(() => {}); } catch (_) {}
     conversationTurns = [];
     currentSessionId = null;
     currentRawResponse = '';
@@ -2577,6 +2577,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ---------------------------------------------------------------------------
   // 7. Background Studio (Custom Live Video, Image & Rollback)
   // ---------------------------------------------------------------------------
+  async function syncHistoryFromDb() { try { const res = await fetch(`${BACKEND_URL}/api/history`); if (res.ok) { const data = await res.json(); if (data && Array.isArray(data.history) && data.history.length > 0) { saveHistory(data.history); renderHistory(); } } } catch (_) {} } syncHistoryFromDb();
   const DEFAULT_VIDEO_URL = './assets/loopvideo.mp4';
   const videoElement = document.getElementById('bg-video');
   const videoSource = document.getElementById('bg-video-source');

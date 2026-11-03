@@ -17,6 +17,83 @@ mimetypes.add_type("image/svg+xml", ".svg")
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
 
+import sqlite3
+
+DB_PATH = os.path.join(os.path.dirname(__file__), "chatbot.db")
+
+
+def init_db():
+    """Initialize SQLite database for chat history, generated images, and videos."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL;")
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            id TEXT PRIMARY KEY,
+            title TEXT,
+            created_at REAL,
+            updated_at REAL
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS turns (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            turn_index INTEGER NOT NULL,
+            prompt TEXT,
+            answer TEXT,
+            is_image INTEGER DEFAULT 0,
+            image_url TEXT,
+            is_video INTEGER DEFAULT 0,
+            video_url TEXT,
+            created_at REAL,
+            FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS media_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            media_type TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            prompt TEXT,
+            data BLOB,
+            url TEXT,
+            created_at REAL
+        )
+        """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[SQL DB Error] Init failed: {e}")
+
+
+def save_media_to_db(media_type, filename, prompt_text, media_bytes, session_id=None, url=""):
+    """Save an image or video directly into the SQLite database."""
+    if not media_bytes:
+        return
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            """INSERT INTO media_files (session_id, media_type, filename, prompt, data, url, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (session_id, media_type, filename, prompt_text, sqlite3.Binary(media_bytes), url, time.time())
+        )
+        conn.commit()
+        conn.close()
+        print(f"[SQL DB] Successfully saved {media_type}: {filename} ({len(media_bytes)} bytes)")
+    except Exception as e:
+        print(f"[SQL DB] Error saving {media_type} to database: {e}")
+
+
+# Initialize database tables on startup
+init_db()
+
 OLLAMA_HOST = "127.0.0.1"
 OLLAMA_PORT = 11434
 OLLAMA_BASE_URL = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}"
@@ -962,6 +1039,15 @@ def generate_image():
         img_type = image_info.get("type", "output")
         image_url = f"/api/comfy-view?filename={urllib.parse.quote(filename)}&subfolder={urllib.parse.quote(subfolder)}&type={img_type}"
 
+        # Persist generated image directly to SQLite database
+        try:
+            comfy_view_url = f"{COMFYUI_BASE_URL}/view?filename={urllib.parse.quote(filename)}&subfolder={urllib.parse.quote(subfolder)}&type={img_type}"
+            with urllib.request.urlopen(comfy_view_url, timeout=30) as r:
+                img_bytes = r.read()
+            save_media_to_db("image", filename, prompt_text, img_bytes, url=image_url)
+        except Exception as db_img_err:
+            print(f"[SQL DB] Warning saving image to DB: {db_img_err}")
+
         return jsonify({
             "status": "success",
             "prompt": prompt_text,
@@ -1292,6 +1378,21 @@ def generate_video():
         else:
             video_url = f"/api/comfy-view?filename={urllib.parse.quote(filename)}&subfolder={urllib.parse.quote(subfolder)}&type={file_type}"
 
+        # Persist generated video directly to SQLite database
+        try:
+            vid_bytes = b""
+            if filename.lower().endswith(".mp4") and os.path.exists(os.path.join(OUTPUTS_DIR, filename)):
+                with open(os.path.join(OUTPUTS_DIR, filename), "rb") as vf:
+                    vid_bytes = vf.read()
+            elif video_url:
+                view_fetch_url = comfy_view_url if 'comfy_view_url' in locals() else f"{COMFYUI_BASE_URL}/view?filename={urllib.parse.quote(filename)}&subfolder={urllib.parse.quote(subfolder)}&type={file_type}"
+                with urllib.request.urlopen(view_fetch_url, timeout=60) as r:
+                    vid_bytes = r.read()
+            if vid_bytes:
+                save_media_to_db("video", filename, prompt_text, vid_bytes, url=video_url)
+        except Exception as db_vid_err:
+            print(f"[SQL DB] Warning saving video to DB: {db_vid_err}")
+
         return jsonify({
             "status": "success",
             "prompt": prompt_text,
@@ -1370,6 +1471,145 @@ def stop_image_generation():
     # Free model from memory completely
     free_comfyui_memory()
     return jsonify({"status": "stopped", "message": "ComfyUI generation interrupted and model unloaded."})
+
+
+
+# ===========================================================================
+# SQLite Database Endpoints (Chat History, Images & Videos)
+# ===========================================================================
+
+@app.route("/api/history", methods=["GET"])
+def get_all_history():
+    """Retrieve all chat sessions and their turns from the SQL database."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, title, created_at, updated_at FROM sessions ORDER BY updated_at DESC")
+        session_rows = cursor.fetchall()
+        sessions = []
+        for s_row in session_rows:
+            s_id, title, c_at, u_at = s_row
+            cursor.execute(
+                "SELECT prompt, answer, is_image, image_url, is_video, video_url FROM turns WHERE session_id = ? ORDER BY turn_index ASC",
+                (s_id,)
+            )
+            turns_rows = cursor.fetchall()
+            turns = []
+            for t in turns_rows:
+                turns.append({
+                    "prompt": t[0] or "",
+                    "answer": t[1] or "",
+                    "isImage": bool(t[2]),
+                    "imageUrl": t[3],
+                    "isVideo": bool(t[4]),
+                    "videoUrl": t[5]
+                })
+            sessions.append({
+                "id": s_id,
+                "title": title or "Conversation",
+                "timestamp": int((u_at or c_at or time.time()) * 1000),
+                "turns": turns
+            })
+        conn.close()
+        return jsonify({"status": "success", "history": sessions})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e), "history": []}), 500
+
+
+@app.route("/api/history/save", methods=["POST"])
+def save_chat_session():
+    """Save or update a chat session and its turns in SQLite."""
+    try:
+        data = request.get_json(silent=True) or {}
+        session_id = data.get("id")
+        if not session_id:
+            return jsonify({"error": "session id required"}), 400
+        title = data.get("title", "Conversation")
+        turns = data.get("turns", [])
+        now = time.time()
+
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            """INSERT INTO sessions (id, title, created_at, updated_at)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET title = excluded.title, updated_at = excluded.updated_at""",
+            (session_id, title, now, now)
+        )
+        cursor.execute("DELETE FROM turns WHERE session_id = ?", (session_id,))
+        for idx, t in enumerate(turns):
+            cursor.execute(
+                """INSERT INTO turns (session_id, turn_index, prompt, answer, is_image, image_url, is_video, video_url, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    session_id,
+                    idx,
+                    t.get("prompt", ""),
+                    t.get("answer", ""),
+                    1 if t.get("isImage") else 0,
+                    t.get("imageUrl"),
+                    1 if t.get("isVideo") else 0,
+                    t.get("videoUrl"),
+                    now
+                )
+            )
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "success", "session_id": session_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/history/<session_id>", methods=["DELETE"])
+def delete_chat_session(session_id):
+    """Delete a chat session and its turns from SQLite."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM turns WHERE session_id = ?", (session_id,))
+        cursor.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+        cursor.execute("DELETE FROM media_files WHERE session_id = ?", (session_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "success", "deleted": session_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/history/clear", methods=["POST"])
+def clear_all_history():
+    """Clear all chat sessions, turns, and saved media from SQLite."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM turns")
+        cursor.execute("DELETE FROM sessions")
+        cursor.execute("DELETE FROM media_files")
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "success", "message": "History cleared from database."})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/db-media/<filename>", methods=["GET"])
+def get_db_media(filename):
+    """Retrieve saved image or video directly from the SQLite database."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT media_type, data FROM media_files WHERE filename = ? ORDER BY id DESC LIMIT 1", (filename,))
+        row = cursor.fetchone()
+        conn.close()
+        if not row or not row[1]:
+            return jsonify({"error": "Media not found in database"}), 404
+        media_type, data = row
+        mimetype = "image/png" if media_type == "image" else "video/mp4"
+        resp = Response(data, mimetype=mimetype)
+        resp.headers["Cache-Control"] = "public, max-age=86400, immutable"
+        return resp
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/readme")
