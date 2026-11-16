@@ -3951,8 +3951,8 @@ body:not(.chat-active) .ai-scroll-bottom-btn,
 }
 
 .api-key-input:focus {
-  border-color: rgba(56, 189, 248, 0.6);
-  box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+  border-color: rgba(255, 255, 255, 0.45);
+  box-shadow: none;
 }
 
 .api-keys-note {
